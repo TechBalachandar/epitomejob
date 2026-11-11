@@ -64,7 +64,7 @@ public class AuthService {
         Instant.now().plusMillis(jwt.refreshExpirationMs())));
     return new AuthResult(jwt.generateAccess(user), refresh, 900_000L, user);
   }
-  static String sha256(String value) {
+  public static String sha256(String value) {
     try {
       return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
           .digest(value.getBytes(StandardCharsets.UTF_8)));
