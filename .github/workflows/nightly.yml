@@ -25,6 +25,7 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
+          cache-dependency-path: backend/pom.xml
       - name: Run backend tests
         working-directory: backend
         run: mvn -B test
