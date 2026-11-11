@@ -1,0 +1,78 @@
+# EpitomeJob nightly QA — full suite, daily 6:00 AM ET (11:00 UTC).
+# Writes a qa-reports/<date>.md summary into the repo so the daily QA
+# agent (7:00 AM ET) can triage it and report at 7:05 AM ET.
+# The suite grows with the phases: Playwright E2E lands in W0/W2,
+# agent evals in W3, ZAP + k6 in W4. Until then, this runs everything
+# that exists: backend unit + API tests.
+name: Nightly QA
+
+on:
+  schedule:
+    - cron: "0 11 * * *"
+  workflow_dispatch:
+
+jobs:
+  backend-full:
+    name: Backend full suite
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Run backend tests
+        working-directory: backend
+        run: mvn -B test
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-backend-surefire-reports
+          path: backend/target/surefire-reports/
+      - name: Write QA report file
+        if: always()
+        run: |
+          mkdir -p qa-reports
+          REPORT_DATE=$(TZ=America/New_York date +%F)
+          REPORT="qa-reports/${REPORT_DATE}.md"
+          COUNTS=$(awk -F'[:,]' '/Tests run/{run+=$2; fail+=$4; err+=$6} END{print (run+0)" "(fail+0)" "(err+0)}' backend/target/surefire-reports/*.txt 2>/dev/null || echo "0 0 0")
+          set -- $COUNTS
+          if [ "$1" = "0" ] && [ "$2" = "0" ] && [ "$3" = "0" ] && [ ! -d backend/target/surefire-reports ]; then
+            VERDICT="🔴 FAIL — no test reports found (build or test run did not produce output)"
+          elif [ "$2" = "0" ] && [ "$3" = "0" ]; then
+            VERDICT="🟢 PASS"
+          else
+            VERDICT="🔴 FAIL"
+          fi
+          {
+            echo "# Nightly QA — ${REPORT_DATE}"
+            echo ""
+            echo "- Verdict: ${VERDICT}"
+            echo "- Backend tests: $1 run, $2 failures, $3 errors"
+            echo "- Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "- Trigger: ${GITHUB_EVENT_NAME} at $(TZ=America/New_York date '+%H:%M %Z')"
+            echo "- Commit: ${GITHUB_SHA}"
+          } > "$REPORT"
+          echo "Wrote $REPORT"
+      - name: Commit QA report
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add qa-reports/
+          if git diff --cached --quiet; then
+            echo "No QA report changes to commit"
+          else
+            git commit -m "QA report $(TZ=America/New_York date +%F) [skip ci]"
+            git push
+          fi
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Nightly QA — backend" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tests: $(find backend/target/surefire-reports -name '*.txt' -exec grep -h 'Tests run' {} + | awk '{s+=$3; f+=$5; e+=$7} END {print s" run, "f" failures, "e" errors}')" >> "$GITHUB_STEP_SUMMARY"
