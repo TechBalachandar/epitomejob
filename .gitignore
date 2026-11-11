@@ -1,0 +1,28 @@
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+
+# Spring Boot
+*.log
+*.env
+!.env.example
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+*.tsbuildinfo
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Local data
+data/
+*.mv.db
+*.trace.db
