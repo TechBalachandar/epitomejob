@@ -1,0 +1,392 @@
+{
+  "auth": {
+    "bearer": [
+      {
+        "key": "token",
+        "type": "string",
+        "value": "{{token}}"
+      }
+    ],
+    "type": "bearer"
+  },
+  "info": {
+    "description": "Phase 0 backend gate (M2 Identity, M3 Profile, M4 Resume, M7 Approval + SSE). Run the requests top to bottom, in order. The backend must be running (mvn spring-boot:run) with Postgres + RustFS up (docker compose up -d).\n\nSetup: nothing to configure \u2014 baseUrl defaults to http://localhost:8080. The Login request saves the access token automatically, the Resume Upload saves resumeId, and Create Approval saves approvalId, so later requests just work.\n\nCollection Runner: requests 1\u20137 run and each one asserts its result, so the run summary shows real pass/fail counts. Request 8 (SSE stream) is manual-only \u2014 a stream never ends, so the Runner would hang on it; the run stops automatically after request 7. To test the stream, open request 8 on its own.\n\nBefore a Runner run: open request 5 (Upload Resume) and make sure a PDF file is selected \u2014 the Runner cannot pick a file for you.\n\nDev seed user (already in the DB): dev@example.com / DevPass123! \u2014 dev only. Or register a new user with request 2.",
+    "name": "EpitomeJob \u2014 Phase 0 Gate",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Health returns 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Status is UP', function () {",
+              "    const data = pm.response.json();",
+              "    pm.expect(data.status).to.eql('UP');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "name": "1. Health",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "description": "Gate step 1 \u2014 the app is up. Expect 200 with {\"status\":\"UP\"}.",
+        "method": "GET",
+        "url": {
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "actuator",
+            "health"
+          ],
+          "raw": "{{baseUrl}}/actuator/health"
+        }
+      }
+    },
+    {
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const email = 'user-' + Date.now() + '@example.com';",
+              "pm.collectionVariables.set('userEmail', email);",
+              "console.log('Registering as ' + email);"
+            ]
+          }
+        }
+      ],
+      "name": "2. Register",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "body": {
+          "mode": "raw",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          },
+          "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"fullName\": \"Your Name\",\n  \"password\": \"Passw0rd!\"\n}"
+        },
+        "description": "Gate step 2a \u2014 create a user. A pre-request script generates a fresh unique email for every run (registering the same email twice returns 409). Expect 201.",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "method": "POST",
+        "url": {
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "register"
+          ],
+          "raw": "{{baseUrl}}/auth/register"
+        }
+      }
+    },
+    {
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Login returns 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Login returns an accessToken', function () {",
+              "    const data = pm.response.json();",
+              "    pm.expect(data.accessToken).to.be.a('string').and.not.empty;",
+              "});",
+              "const data = pm.response.json();",
+              "if (data.accessToken) {",
+              "    pm.collectionVariables.set('token', data.accessToken);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "name": "3. Login",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "body": {
+          "mode": "raw",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          },
+          "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"Passw0rd!\"\n}"
+        },
+        "description": "Gate step 2b \u2014 log in. The test script saves the accessToken into the {{token}} variable automatically, so all later requests are authenticated. Expect 200.",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "method": "POST",
+        "url": {
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "login"
+          ],
+          "raw": "{{baseUrl}}/auth/login"
+        }
+      }
+    },
+    {
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Profile update returns 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Profile has a completeness score', function () {",
+              "    const data = pm.response.json();",
+              "    pm.expect(data.completeness).to.be.a('number');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "name": "4. Update Profile",
+      "request": {
+        "body": {
+          "mode": "raw",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          },
+          "raw": "{\n  \"headline\": \"Java Developer\",\n  \"location\": \"Reston, VA\",\n  \"workType\": \"REMOTE\"\n}"
+        },
+        "description": "Gate step 3 \u2014 update your profile. Uses the saved {{token}}. Expect 200 with the profile and a completeness score.",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "method": "PUT",
+        "url": {
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "profiles",
+            "me"
+          ],
+          "raw": "{{baseUrl}}/profiles/me"
+        }
+      }
+    },
+    {
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Resume upload returns 201', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "pm.test('Resume has an id and a status', function () {",
+              "    const data = pm.response.json();",
+              "    pm.expect(data.id || data.resumeId).to.exist;",
+              "    pm.expect(data.status).to.exist;",
+              "});",
+              "const data = pm.response.json();",
+              "const id = data.id || data.resumeId;",
+              "if (id) {",
+              "    pm.collectionVariables.set('resumeId', id);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "name": "5. Upload Resume (PDF)",
+      "request": {
+        "body": {
+          "formdata": [
+            {
+              "key": "file",
+              "src": [],
+              "type": "file"
+            }
+          ],
+          "mode": "formdata"
+        },
+        "description": "Gate step 4 \u2014 upload a resume. BEFORE sending: click the file field and select a real PDF from your Mac (PDF only in Phase 0). The test script saves the returned resume id into {{resumeId}}. Expect 201 with status READY (or FAILED if the PDF text could not be parsed).",
+        "method": "POST",
+        "url": {
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "resumes"
+          ],
+          "raw": "{{baseUrl}}/resumes"
+        }
+      }
+    },
+    {
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Create approval returns 201', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "pm.test('Approval has an id', function () {",
+              "    const data = pm.response.json();",
+              "    pm.expect(data.id || data.approvalId).to.exist;",
+              "});",
+              "const data = pm.response.json();",
+              "const id = data.id || data.approvalId;",
+              "if (id) {",
+              "    pm.collectionVariables.set('approvalId', id);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "name": "6. Create Approval",
+      "request": {
+        "body": {
+          "mode": "raw",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          },
+          "raw": "{\n  \"action\": \"CREATE_APPLICATION\",\n  \"payload\": \"{\\\"jobId\\\": \\\"job-1\\\", \\\"resumeId\\\": \\\"{{resumeId}}\\\"}\"\n}"
+        },
+        "description": "Gate step 5a \u2014 propose an action (draft application). Uses the saved {{resumeId}}. Note: the backend takes payload as a JSON string, not an object. The test script saves the approval id into {{approvalId}}. Expect 201 with status PENDING.",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "method": "POST",
+        "url": {
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "approvals"
+          ],
+          "raw": "{{baseUrl}}/approvals"
+        }
+      }
+    },
+    {
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Approve returns 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Approval is APPROVED', function () {",
+              "    const data = pm.response.json();",
+              "    pm.expect(data.status).to.eql('APPROVED');",
+              "});",
+              "postman.setNextRequest(null);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "name": "7. Approve",
+      "request": {
+        "description": "Gate step 5b \u2014 approve the draft. Uses the saved {{approvalId}}. Expect 200 with status APPROVED. Approving twice is safe (idempotent \u2014 the second call returns the same result). The test script stops the Runner here on purpose: the next request is a never-ending SSE stream, which the Runner cannot finish.",
+        "method": "POST",
+        "url": {
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "approvals",
+            "{{approvalId}}",
+            "approve"
+          ],
+          "raw": "{{baseUrl}}/approvals/{{approvalId}}/approve"
+        }
+      }
+    },
+    {
+      "name": "8. Approval Inbox (SSE stream)",
+      "request": {
+        "description": "Gate step 6 \u2014 MANUAL ONLY, do not run this in the Collection Runner. Open it on its own: Postman will hold the connection open and show events as they arrive. To see an event, keep this tab open and create another approval (request 6) in a second tab. Press Stop when done.",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "text/event-stream"
+          }
+        ],
+        "method": "GET",
+        "url": {
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "approvals",
+            "stream"
+          ],
+          "raw": "{{baseUrl}}/approvals/stream"
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "resumeId",
+      "value": ""
+    },
+    {
+      "key": "approvalId",
+      "value": ""
+    },
+    {
+      "key": "userEmail",
+      "value": ""
+    }
+  ]
+}
