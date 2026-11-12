@@ -45,6 +45,42 @@ curl -X POST http://localhost:8080/approvals/<approval-id>/approve -H "Authoriza
 ```
 Or run the Postman collection `EpitomeJob-Phase0.postman_collection.json` (Runner runs 1–7; the SSE stream is manual-only).
 
+## W2 — jobs, matching, tracker, interviews (Flyway V3)
+
+18 seeded jobs (6 roles) and a 30-question bank (5 per role) ship in
+`V3__jobs_matching_tracker_interview.sql`. New modules: `job` (M5),
+`matching` (M6), `tracker` (M9), `interview` (M8). All endpoints need a
+Bearer token; no security-config change was needed.
+
+| Endpoint | Notes |
+|---|---|
+| `GET /jobs?query=&location=&workType=&sponsorsH1b=&page=0&size=20` | Filters per contract §2; `size` clamped to 50. Returns `{content, page, size, totalElements, totalPages}`. |
+| `GET /jobs/{id}` | 404 when missing. |
+| `GET /matches/me` | Top 20 by score desc. Score = skills 50 + location 10 + work type 10 + salary 15 + sponsorship 15. `source` is `RESUME` when a READY resume exists, else `PROFILE`. |
+| `GET /matches/{jobId}` | 404 when the job is missing. |
+| `POST /tracker {jobId, resumeId?}` | 201 `SAVED`; 409 on duplicate user+job; 404 job missing. |
+| `GET /tracker/me` | Newest first. |
+| `PUT /tracker/{id} {status, notes?}` | 400 invalid status; 404 not owner; absent `notes` keeps existing notes. |
+| `DELETE /tracker/{id}` | 204; 404 not owner. |
+| `GET /interviews/questions?jobId=` | 5 questions for the job's role (General fallback); 400 when `jobId` is absent, 404 job missing. |
+| `POST /interviews/sessions {jobId}` | 201; always a new session (retakes allowed). |
+| `POST /interviews/sessions/{id}/answers {questionId, answerText}` | 200; re-posting replaces the previous answer and re-scores it. 400 empty answer / question outside the session's role set; 404 session not owner. |
+| `GET /interviews/sessions/me` | Newest first. |
+| `GET /interviews/sessions/{id}` | 404 not owner. Session becomes `COMPLETED` (with `completedAt` and `averageScore`) once every role question has an answer. |
+
+Apply flow (contract §6): the web saves a tracker entry, proposes an
+approval with `action: "APPLY_JOB"` and a JSON-string payload
+`{"jobId","resumeId","trackerId"}`, and on approval calls
+`PUT /tracker/{trackerId} {status: "APPLIED"}`. The backend never
+auto-applies; `AppConstants.Approval.ACTION_APPLY_JOB` exists for
+documentation only.
+
+Job providers (contract §8): `JobProvider` is the interface.
+`SeedJobProvider` (default) reads `job.jobs`. Set
+`epitomejob.jobs.provider=adzuna` to select `AdzunaJobProvider`, a stub
+that makes no network calls — on first use it throws `IllegalStateException`
+naming `ADZUNA_APP_ID` / `ADZUNA_APP_KEY` when they are missing.
+
 ## Layout — clean architecture, module first
 Modules stay the top-level boundary (one package per bounded context, so a module can be lifted out whole in the Phase 5 strangler split). Inside each module, strict layers: `controller` → `service` → `repository` → `model`, with `dto` at the boundary. Controllers never return entities — only DTOs. Shared cross-cutting code lives in `common/`.
 
@@ -62,10 +98,14 @@ src/main/java/com/epitomejob/
   profile/       M3 — controller/ service/ repository/ model/ dto/
   resume/        M4 — controller/ service/ repository/ model/ dto/
   approval/      M7 — controller/ service/ repository/ model/ dto/
-src/main/resources/application.yml, db/migration/V1__identity.sql, V2__profile_resume_approval.sql
+  job/           M5 — controller/ service/ (JobProvider, SeedJobProvider, AdzunaJobProvider) repository/ model/ dto/ config/
+  matching/      M6 — controller/ service/ dto/
+  tracker/       M9 — controller/ service/ repository/ model/ dto/
+  interview/     M8 — controller/ service/ repository/ model/ dto/
+src/main/resources/application.yml, db/migration/V1__identity.sql, V2__profile_resume_approval.sql, V3__jobs_matching_tracker_interview.sql
 src/test/java/com/epitomejob/
-  common/ identity/ profile/ resume/ approval/   # unit + @WebMvcTest slices
-  integration/GateJourneyIT.java                  # Testcontainers end-to-end gate
+  common/ identity/ profile/ resume/ approval/ job/ matching/ tracker/ interview/   # unit + @WebMvcTest slices
+  integration/GateJourneyIT.java, W2JourneyIT.java   # Testcontainers end-to-end gates
   EpitomeJobApplicationTests.java                 # context smoke test (H2 profile)
 ```
 
