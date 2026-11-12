@@ -21,7 +21,7 @@ const NEXT_STEPS = [
   { text: "Finish your profile — headline and salary range are still blank.", href: "/profile" },
   { text: "Review your 92% match: Agentic AI Engineer at Meridian Care.", href: "/matches" },
   { text: "2 approvals are waiting for your decision.", href: "/approvals" },
-  { text: "Run a 3-question mock interview before Friday.", href: "/interviews" },
+  { text: "Run a 5-question mock interview before Friday.", href: "/interviews" },
 ];
 
 export default function DashboardPage() {

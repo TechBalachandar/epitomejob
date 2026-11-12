@@ -26,3 +26,13 @@ dist/
 data/
 *.mv.db
 *.trace.db
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local backups (never commit database dumps)
+epitomejob-backup.sql
+*-backup.sql

@@ -30,6 +30,20 @@ public class GlobalExceptionHandler {
             MDC.get(AppConstants.Http.TRACE_ID_MDC_KEY)));
   }
 
+  @ExceptionHandler(AgentUnavailableException.class)
+  public ResponseEntity<ApiError> handle(AgentUnavailableException ex) {
+    return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+        .body(new ApiError(AppConstants.Errors.AGENT_UNAVAILABLE_CODE, ex.getMessage(),
+            MDC.get(AppConstants.Http.TRACE_ID_MDC_KEY)));
+  }
+
+  @ExceptionHandler(ResumeNotReadyException.class)
+  public ResponseEntity<ApiError> handle(ResumeNotReadyException ex) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        .body(new ApiError(AppConstants.Errors.RESUME_NOT_READY_CODE, ex.getMessage(),
+            MDC.get(AppConstants.Http.TRACE_ID_MDC_KEY)));
+  }
+
   @ExceptionHandler(Exception.class)
   public ResponseEntity<ApiError> handle(Exception ex) {
     // Never leak a stack trace or an internal message to the client.

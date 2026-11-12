@@ -1,5 +1,6 @@
 package com.epitomejob.resume.service;
 
+import com.epitomejob.common.exception.ResumeNotReadyException;
 import com.epitomejob.resume.model.Resume;
 import com.epitomejob.resume.repository.ResumeRepository;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -21,6 +22,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.io.ByteArrayOutputStream;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -49,7 +51,7 @@ class ResumeServiceTest {
 
   private void authenticate() {
     SecurityContextHolder.getContext().setAuthentication(
-            new UsernamePasswordAuthenticationToken(USER_ID.toString(), null, List.of()));
+        new UsernamePasswordAuthenticationToken(USER_ID.toString(), null, List.of()));
   }
 
   private ResumeService service() {
@@ -92,7 +94,7 @@ class ResumeServiceTest {
     authenticate();
     when(resumes.save(any())).thenAnswer(inv -> inv.getArgument(0));
     var file = new MockMultipartFile("file", "resume.pdf", "application/pdf",
-            "this is not a pdf at all".getBytes());
+        "this is not a pdf at all".getBytes());
 
     Resume saved = service().upload(file);
 
@@ -111,8 +113,8 @@ class ResumeServiceTest {
   void uploadNonPdfIsBadRequest() {
     authenticate();
     var file = new MockMultipartFile("file", "resume.docx",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "fake".getBytes());
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "fake".getBytes());
     var ex = assertThrows(ResponseStatusException.class, () -> service().upload(file));
     assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
   }
@@ -136,5 +138,56 @@ class ResumeServiceTest {
     when(resumes.findByUserIdOrderByCreatedAtDesc(USER_ID)).thenReturn(List.of(resume));
 
     assertEquals(List.of(resume), service().listMine());
+  }
+
+  @Test
+  void getParsedTextReturnsOwnedResumeWithText() {
+    authenticate();
+    Resume resume = new Resume(USER_ID, "u1/f.pdf", "resume.pdf", "pdf", 100);
+    resume.setParsedText("Java Developer with Spring Boot");
+    when(resumes.findById(resume.getId())).thenReturn(Optional.of(resume));
+
+    assertEquals(resume, service().getParsedText(resume.getId()));
+  }
+
+  @Test
+  void getParsedTextMissingIs404() {
+    authenticate();
+    when(resumes.findById(any())).thenReturn(Optional.empty());
+
+    var ex = assertThrows(ResponseStatusException.class,
+        () -> service().getParsedText(UUID.randomUUID()));
+    assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+  }
+
+  @Test
+  void getParsedTextNotOwnerIs404() {
+    authenticate();
+    Resume resume = new Resume(UUID.randomUUID(), "u1/f.pdf", "resume.pdf", "pdf", 100);
+    resume.setParsedText("someone else's text");
+    when(resumes.findById(any())).thenReturn(Optional.of(resume));
+
+    var ex = assertThrows(ResponseStatusException.class,
+        () -> service().getParsedText(resume.getId()));
+    assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+  }
+
+  @Test
+  void getParsedTextNullIsNotReady() {
+    authenticate();
+    Resume resume = new Resume(USER_ID, "u1/f.pdf", "resume.pdf", "pdf", 100);
+    when(resumes.findById(any())).thenReturn(Optional.of(resume));
+
+    assertThrows(ResumeNotReadyException.class, () -> service().getParsedText(resume.getId()));
+  }
+
+  @Test
+  void getParsedTextBlankIsNotReady() {
+    authenticate();
+    Resume resume = new Resume(USER_ID, "u1/f.pdf", "resume.pdf", "pdf", 100);
+    resume.setParsedText("   ");
+    when(resumes.findById(any())).thenReturn(Optional.of(resume));
+
+    assertThrows(ResumeNotReadyException.class, () -> service().getParsedText(resume.getId()));
   }
 }

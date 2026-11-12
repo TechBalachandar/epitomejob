@@ -1,0 +1,19 @@
+# EpitomeJob W3 agent-brain — every pin verified to exist on PyPI
+# (2026-11-12, via `pip index versions <pkg>`).
+# LLM access is direct httpx to local Ollama — no langchain-ollama needed.
+fastapi==0.162.5
+uvicorn==0.54.0
+langgraph==1.2.20
+httpx==0.28.1
+psycopg[binary]==3.3.9
+temporalio==1.36.0
+fastmcp==4.1.8
+pydantic==2.14.3
+pydantic-settings==2.16.2
+pytest==9.2.0
+pytest-asyncio==1.5.0
+# Pin: cryptography 49+ ships ARM-only macOS wheels (no Intel wheel), so an
+# Intel Mac falls back to a source build that needs OpenSSL + pkg-config.
+# 48.0.1 is the newest version with a universal2 wheel, and it satisfies
+# authlib's cryptography>=45.0.1 requirement.
+cryptography==48.0.1

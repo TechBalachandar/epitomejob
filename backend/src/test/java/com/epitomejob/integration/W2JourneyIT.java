@@ -35,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class W2JourneyIT {
 
   @Container
-  static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+  static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("pgvector/pgvector:pg16")
       .withDatabaseName("epitomejob")
       .withUsername("epitomejob")
       .withPassword("epitomejob-dev");

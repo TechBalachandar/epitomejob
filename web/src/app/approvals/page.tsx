@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useDecideApproval, usePendingApprovals, ApiError } from "@/lib/api";
+import { updateProfile, updateTrackerEntry, useDecideApproval, usePendingApprovals, ApiError } from "@/lib/api";
+import type { ProfileUpdate } from "@/lib/types";
 import { toast } from "@/lib/toast-store";
 import { ApprovalCard } from "@/components/approval-card";
 import { Card, CardContent } from "@/components/ui/card";
@@ -38,7 +39,44 @@ export default function ApprovalsPage() {
 
   async function handleDecision(id: string, decision: "approve" | "reject") {
     try {
-      await decide.mutateAsync({ id, decision });
+      const decided = await decide.mutateAsync({ id, decision });
+      // W2 apply flow (contract §6): an approved APPLY_JOB flips the
+      // tracker entry to APPLIED. Rejected/expired approvals leave it SAVED.
+      if (decision === "approve" && decided.action === "APPLY_JOB") {
+        try {
+          const payload = JSON.parse(decided.payload) as { trackerId?: string };
+          if (payload.trackerId) {
+            await updateTrackerEntry(payload.trackerId, { status: "APPLIED" });
+            void queryClient.invalidateQueries({ queryKey: ["tracker", "me"] });
+          }
+        } catch {
+          toast({
+            title: "Approved, but the tracker was not updated",
+            description: "Open the Tracker page and move the job to Applied manually.",
+            variant: "error",
+          });
+        }
+      }
+      // W3 (contract §9): an approved UPDATE_PROFILE executes via the
+      // existing PUT /profiles/me call with payload.fields, mirroring the
+      // APPLY_JOB → tracker flip above. DRAFT_APPLICATION needs no extra
+      // call — the draft text lives in the approval payload and the inbox
+      // shows it.
+      if (decision === "approve" && decided.action === "UPDATE_PROFILE") {
+        try {
+          const payload = JSON.parse(decided.payload) as { fields?: ProfileUpdate };
+          if (payload.fields) {
+            await updateProfile(payload.fields);
+            void queryClient.invalidateQueries({ queryKey: ["profile", "me"] });
+          }
+        } catch {
+          toast({
+            title: "Approved, but the profile was not updated",
+            description: "Open the Profile page and apply the change manually.",
+            variant: "error",
+          });
+        }
+      }
       toast({
         title: decision === "approve" ? "Approved" : "Rejected",
         description:

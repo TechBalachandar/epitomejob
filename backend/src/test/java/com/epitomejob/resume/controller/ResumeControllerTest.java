@@ -1,5 +1,6 @@
 package com.epitomejob.resume.controller;
 
+import com.epitomejob.common.exception.ResumeNotReadyException;
 import com.epitomejob.common.security.SecurityConfig;
 import com.epitomejob.identity.service.JwtService;
 import com.epitomejob.resume.model.Resume;
@@ -9,9 +10,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.UUID;
@@ -82,5 +85,41 @@ class ResumeControllerTest {
     var file = new MockMultipartFile("file", "resume.pdf", "application/pdf", "fake-pdf".getBytes());
     mockMvc.perform(multipart("/resumes").file(file))
         .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void getTextReturnsResumeIdAndText() throws Exception {
+    authenticate();
+    Resume resume = resume();
+    resume.setParsedText("Java Developer with Spring Boot");
+    when(service.getParsedText(resume.getId())).thenReturn(resume);
+
+    mockMvc.perform(get("/resumes/" + resume.getId() + "/text")
+            .header("Authorization", "Bearer test-token"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.resumeId").value(resume.getId().toString()))
+        .andExpect(jsonPath("$.text").value("Java Developer with Spring Boot"));
+  }
+
+  @Test
+  void getTextNotFoundIs404() throws Exception {
+    authenticate();
+    when(service.getParsedText(any())).thenThrow(
+        new ResponseStatusException(HttpStatus.NOT_FOUND, "Resume not found"));
+
+    mockMvc.perform(get("/resumes/" + UUID.randomUUID() + "/text")
+            .header("Authorization", "Bearer test-token"))
+        .andExpect(status().isNotFound());
+  }
+
+  @Test
+  void getTextNotReadyIs400WithCode() throws Exception {
+    authenticate();
+    when(service.getParsedText(any())).thenThrow(new ResumeNotReadyException());
+
+    mockMvc.perform(get("/resumes/" + UUID.randomUUID() + "/text")
+            .header("Authorization", "Bearer test-token"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("RESUME_NOT_READY"));
   }
 }

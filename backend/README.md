@@ -2,7 +2,7 @@
 
 **What this is:** Phase 0 of the Best Execution Plan — login, profile, resume upload, approval gate + SSE. One Spring Boot deployable. Microservices come in Phase 5; do not split this yet.
 
-**Stack (all pinned, see pom.xml):** Java 21, Spring Boot 3.5.4, Spring Security 6, JJWT 0.12.6, Flyway, Postgres 16, RustFS (S3-compatible), PDFBox 3.0.2, JUnit 5, Mockito, Testcontainers, JaCoCo, springdoc OpenAPI 2.8.13.
+**Stack (all pinned, see pom.xml):** Java 21, Spring Boot 3.5.4, Spring Security 6, JJWT 0.12.6, Flyway, Postgres 16 + pgvector, RustFS (S3-compatible), PDFBox 3.0.2, JUnit 5, Mockito, Testcontainers, JaCoCo, springdoc OpenAPI 2.8.13.
 
 **Prerequisites on your Mac:** Java 21, Maven 3.9+, Docker Desktop (for Postgres + RustFS only).
 
@@ -81,6 +81,39 @@ Job providers (contract §8): `JobProvider` is the interface.
 that makes no network calls — on first use it throws `IllegalStateException`
 naming `ADZUNA_APP_ID` / `ADZUNA_APP_KEY` when they are missing.
 
+## W3 — coach proxy, resume text, RAG storage (Flyway V4, pgvector)
+
+New module: `coach` (M7). `POST /coach/chat {message}` forwards to the
+agent-brain `POST /chat` with `{message, userId}` + the incoming Bearer
+token and returns the agent-brain response verbatim (status + JSON body).
+Config: `app.agent-brain.url` (default `http://localhost:8000`, env
+`AGENT_BRAIN_URL`); read timeout 120s. Error mapping: agent-brain
+unreachable/timeout → 502 `{"code":"AGENT_UNAVAILABLE",...}`; 401 →
+forwarded; any other agent-brain 4xx/5xx → forwarded status + body.
+`GET /resumes/{id}/text` returns `{resumeId, text}` (owner-only; 404 when
+not found or not the caller's; 400 `RESUME_NOT_READY` when the text is not
+parsed yet). New approval actions: `UPDATE_PROFILE` and
+`DRAFT_APPLICATION` (see `AppConstants.Approval`; the web executes
+`UPDATE_PROFILE` on approval via `PUT /profiles/me`, the draft text lives
+in the `DRAFT_APPLICATION` payload).
+
+| Endpoint | Notes |
+|---|---|
+| `POST /coach/chat {message}` | Requires a Bearer token; forwards it to the agent-brain. 400 on blank message; 502 when the agent-brain is unreachable. |
+| `GET /resumes/{id}/text` | Owner-only. 404 not found / not caller's; 400 `RESUME_NOT_READY` when `parsedText` is null/blank. |
+
+Postgres image is now `pgvector/pgvector:pg16` (stock Postgres 16 + the
+`vector` extension). `V4__rag_vector.sql` creates the `rag.documents`
+table (HNSW + GIN + owner indexes); Java owns it only via Flyway — there
+is no JPA entity for it, the agent-brain reads/writes it with raw SQL.
+
+> **Before switching the image:** back up dev data first —
+> `docker compose exec postgres pg_dump -U epitomejob epitomejob > epitomejob-backup.sql`
+> (cheap insurance; the data is re-seedable, and rollback is just switching
+> the image back — same data-directory format). The Testcontainers ITs
+> (`GateJourneyIT`, `W2JourneyIT`) use the same `pgvector/pgvector:pg16`
+> image, so V4 runs there too.
+
 ## Layout — clean architecture, module first
 Modules stay the top-level boundary (one package per bounded context, so a module can be lifted out whole in the Phase 5 strangler split). Inside each module, strict layers: `controller` → `service` → `repository` → `model`, with `dto` at the boundary. Controllers never return entities — only DTOs. Shared cross-cutting code lives in `common/`.
 
@@ -98,13 +131,14 @@ src/main/java/com/epitomejob/
   profile/       M3 — controller/ service/ repository/ model/ dto/
   resume/        M4 — controller/ service/ repository/ model/ dto/
   approval/      M7 — controller/ service/ repository/ model/ dto/
+  coach/         M7 (W3) — controller/ service/ config/ dto/ (agent-brain proxy)
   job/           M5 — controller/ service/ (JobProvider, SeedJobProvider, AdzunaJobProvider) repository/ model/ dto/ config/
   matching/      M6 — controller/ service/ dto/
   tracker/       M9 — controller/ service/ repository/ model/ dto/
   interview/     M8 — controller/ service/ repository/ model/ dto/
-src/main/resources/application.yml, db/migration/V1__identity.sql, V2__profile_resume_approval.sql, V3__jobs_matching_tracker_interview.sql
+src/main/resources/application.yml, db/migration/V1__identity.sql, V2__profile_resume_approval.sql, V3__jobs_matching_tracker_interview.sql, V4__rag_vector.sql
 src/test/java/com/epitomejob/
-  common/ identity/ profile/ resume/ approval/ job/ matching/ tracker/ interview/   # unit + @WebMvcTest slices
+  common/ identity/ profile/ resume/ approval/ job/ matching/ tracker/ interview/ coach/   # unit + @WebMvcTest slices
   integration/GateJourneyIT.java, W2JourneyIT.java   # Testcontainers end-to-end gates
   EpitomeJobApplicationTests.java                 # context smoke test (H2 profile)
 ```
@@ -119,4 +153,4 @@ src/test/java/com/epitomejob/
 - Dev seed user + dev JWT secret are dev-only. Change them before any shared deployment.
 - Resume parsing is PDF-only in Phase 0 (DOCX comes in Phase 3). No refresh-token flow UI yet — the API exists, the mobile client wires it in Phase 1.
 - No rate limiting on `/auth/login` yet (brute-force protection is a Phase 1 item; the `login_attempts` table is reserved for it).
-- No LangGraph / MCP / RAG yet — those are Phase 2–3. This starter is the system of record they will plug into.
+- No LangGraph / MCP server in Java — W3 adds only the Java side of RAG (Flyway V4 `rag.documents` + the coach proxy); the LangGraph supervisor, MCP server, and RAG reads/writes live in the Python agent-brain, not here.

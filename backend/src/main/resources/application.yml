@@ -27,6 +27,8 @@ app:
     access-key: ${MINIO_ACCESS_KEY:minioadmin}
     secret-key: ${MINIO_SECRET_KEY:minioadmin-dev}
     bucket: ${MINIO_BUCKET:resumes}
+  agent-brain:
+    url: ${AGENT_BRAIN_URL:http://localhost:8000}
 management:
   endpoints:
     web:

@@ -1,6 +1,7 @@
 package com.epitomejob.resume.service;
 
 import com.epitomejob.common.constants.AppConstants;
+import com.epitomejob.common.exception.ResumeNotReadyException;
 import com.epitomejob.common.util.SecurityUtil;
 import com.epitomejob.resume.model.Resume;
 import com.epitomejob.resume.repository.ResumeRepository;
@@ -57,5 +58,22 @@ public class ResumeService {
   @Transactional(readOnly = true)
   public List<Resume> listMine() {
     return resumes.findByUserIdOrderByCreatedAtDesc(SecurityUtil.currentUserId());
+  }
+
+  /**
+   * The caller's resume with its parsed text (W3 contract §3). 404 when the
+   * resume is missing or belongs to someone else; 400 when the text is not
+   * ready yet. Exists so the agent-brain can index/read resume text.
+   */
+  @Transactional(readOnly = true)
+  public Resume getParsedText(UUID id) {
+    Resume resume = resumes.findById(id)
+        .filter(r -> r.getUserId().equals(SecurityUtil.currentUserId()))
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+            AppConstants.Errors.RESUME_NOT_FOUND));
+    if (resume.getParsedText() == null || resume.getParsedText().isBlank()) {
+      throw new ResumeNotReadyException();
+    }
+    return resume;
   }
 }

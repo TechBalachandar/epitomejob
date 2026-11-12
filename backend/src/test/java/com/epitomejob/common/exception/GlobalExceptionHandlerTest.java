@@ -43,4 +43,23 @@ class GlobalExceptionHandlerTest {
     assertEquals("INTERNAL_ERROR", response.getBody().code());
     assertEquals("Something went wrong.", response.getBody().message());
   }
+
+  @Test
+  void agentUnavailableReturns502WithCode() {
+    var response = handler.handle(
+        new AgentUnavailableException(new RuntimeException("connection refused")));
+
+    assertEquals(HttpStatus.BAD_GATEWAY, response.getStatusCode());
+    assertEquals("AGENT_UNAVAILABLE", response.getBody().code());
+    assertEquals("Coach agent is not reachable", response.getBody().message());
+  }
+
+  @Test
+  void resumeNotReadyReturns400WithCode() {
+    var response = handler.handle(new ResumeNotReadyException());
+
+    assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+    assertEquals("RESUME_NOT_READY", response.getBody().code());
+    assertEquals("Resume text is not ready yet", response.getBody().message());
+  }
 }

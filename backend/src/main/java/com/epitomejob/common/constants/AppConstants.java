@@ -45,6 +45,10 @@ public final class AppConstants {
     public static final String STATUS_REJECTED = "REJECTED";
     /** Apply-flow action (W2 contract §6): documentation only — the backend never executes it. */
     public static final String ACTION_APPLY_JOB = "APPLY_JOB";
+    /** Profile-update action (W3 contract §3): executed by the web on approval via PUT /profiles/me. */
+    public static final String ACTION_UPDATE_PROFILE = "UPDATE_PROFILE";
+    /** Draft-application action (W3 contract §3): the draft text lives in the payload; approval is the audit record. */
+    public static final String ACTION_DRAFT_APPLICATION = "DRAFT_APPLICATION";
     /** Approvals expire 24h after they are proposed (signed, idempotent). */
     public static final long EXPIRY_HOURS = 24;
     public static final String SSE_EVENT_PENDING = "pending";
@@ -154,6 +158,16 @@ public final class AppConstants {
     private Interview() {}
   }
 
+  /** Coach proxy (M7, W3 contract §3): Java → agent-brain. */
+  public static final class Coach {
+    /** Agent-brain chat path (relative to app.agent-brain.url). */
+    public static final String CHAT_PATH = "/chat";
+    /** Read timeout matches the agent-brain's Ollama timeout (120s). */
+    public static final int AGENT_BRAIN_READ_TIMEOUT_SECONDS = 120;
+    public static final int AGENT_BRAIN_CONNECT_TIMEOUT_SECONDS = 10;
+    private Coach() {}
+  }
+
   /** User-facing error messages (never include internals). */
   public static final class Errors {
     public static final String EMAIL_ALREADY_REGISTERED = "Email already registered";
@@ -177,6 +191,11 @@ public final class AppConstants {
     public static final String INTERNAL_ERROR_MESSAGE = "Something went wrong.";
     public static final String INTERNAL_ERROR_CODE = "INTERNAL_ERROR";
     public static final String VALIDATION_FAILED_CODE = "VALIDATION_FAILED";
+    public static final String AGENT_UNAVAILABLE_CODE = "AGENT_UNAVAILABLE";
+    public static final String AGENT_UNAVAILABLE_MESSAGE = "Coach agent is not reachable";
+    public static final String RESUME_NOT_FOUND = "Resume not found";
+    public static final String RESUME_NOT_READY_CODE = "RESUME_NOT_READY";
+    public static final String RESUME_NOT_READY = "Resume text is not ready yet";
     private Errors() {}
   }
 }
