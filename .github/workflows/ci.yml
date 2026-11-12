@@ -21,12 +21,18 @@ jobs:
           java-version: "21"
           cache: maven
           cache-dependency-path: backend/pom.xml
-      - name: Run backend tests
+      - name: Run backend tests + coverage gate
         working-directory: backend
-        run: mvn -B test
+        run: mvn -B verify
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: backend-surefire-reports
           path: backend/target/surefire-reports/
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-jacoco-report
+          path: backend/target/site/jacoco/

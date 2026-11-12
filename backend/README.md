@@ -1,18 +1,26 @@
-# EpitomeJob — Phase 0 Starter (Modular Monolith)
+# EpitomeJob — Phase 0 Backend (Modular Monolith, Clean Architecture)
 
-**What this is:** Phase 0 of the Best Execution Plan — login, profile, resume upload, approval gate + SSE. One Spring Boot deployable, modules in separate packages, each with its own Flyway schema. Microservices come in Phase 5; do not split this yet.
+**What this is:** Phase 0 of the Best Execution Plan — login, profile, resume upload, approval gate + SSE. One Spring Boot deployable. Microservices come in Phase 5; do not split this yet.
 
-**Stack (all pinned, see pom.xml):** Java 21, Spring Boot 3.5.4, Spring Security 6, JJWT 0.12.6, Flyway, Postgres 16, MinIO (S3-compatible), PDFBox 3.0.2, JUnit 5.
+**Stack (all pinned, see pom.xml):** Java 21, Spring Boot 3.5.4, Spring Security 6, JJWT 0.12.6, Flyway, Postgres 16, RustFS (S3-compatible), PDFBox 3.0.2, JUnit 5, Mockito, Testcontainers, JaCoCo, springdoc OpenAPI 2.8.13.
 
-**Prerequisites on your Mac:** Java 21, Maven 3.9+, Docker Desktop (for Postgres + MinIO only).
+**Prerequisites on your Mac:** Java 21, Maven 3.9+, Docker Desktop (for Postgres + RustFS only).
 
 ## Run it
 ```bash
 cp .env.example .env        # then edit APP_JWT_SECRET (64+ hex chars)
-docker compose up -d        # Postgres :5432, MinIO :9000 / console :9001
+docker compose up -d        # Postgres :5432, RustFS :9000 / console :9001
 export $(grep -v '^#' .env | xargs)
 mvn spring-boot:run         # app on http://localhost:8080
 ```
+API docs: http://localhost:8080/swagger-ui.html (OpenAPI JSON at /v3/api-docs).
+
+## Tests & coverage
+```bash
+mvn verify                  # unit + slice + integration tests, then the JaCoCo gate
+open target/site/jacoco/index.html   # coverage report
+```
+Coverage gate (enforced in CI, build fails below it): **≥80% lines, ≥70% branches** overall. Security-critical paths (auth, tokens, approval decisions) are covered near 100%. Integration tests run the full gate journey against real Postgres + RustFS via Testcontainers (Docker must be running).
 
 ## Phase 0 gate (run these, in order)
 ```bash
@@ -28,28 +36,47 @@ curl -X PUT http://localhost:8080/profiles/me -H "Authorization: Bearer $TOKEN" 
   -d '{"headline":"Java Developer","location":"Reston, VA","workType":"REMOTE"}'
 # 4. Resume upload (PDF only in Phase 0)
 curl -X POST http://localhost:8080/resumes -H "Authorization: Bearer $TOKEN" -F file=@resume.pdf
-# 5. Approval: create a draft, then approve it
+# 5. Approval: create a draft, then approve it.
+#    NOTE: payload is a JSON *string*, not an object — the backend stores it as TEXT.
 curl -X POST http://localhost:8080/approvals -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"action":"CREATE_APPLICATION","payload":{"jobId":"job-1","resumeId":"<resume-id>"}}'
+  -d '{"action":"CREATE_APPLICATION","payload":"{\"jobId\":\"job-1\",\"resumeId\":\"<resume-id>\"}"}'
 curl -X POST http://localhost:8080/approvals/<approval-id>/approve -H "Authorization: Bearer $TOKEN"
 # 6. SSE approval inbox (in a browser or curl): GET /approvals/stream with the Bearer token
 ```
+Or run the Postman collection `EpitomeJob-Phase0.postman_collection.json` (Runner runs 1–7; the SSE stream is manual-only).
 
-## Honest limits (Phase 0)
-- NOT compiled on the assistant's VM (no Java/Maven/Docker there). First `mvn spring-boot:run` on your Mac is the real build check — send the error tail only if it fails.
-- Dev seed user + dev JWT secret are dev-only. Change them before any shared deployment.
-- Resume parsing is PDF-only in Phase 0 (DOCX comes in Phase 3). No refresh-token flow UI yet — the API exists, the Android client wires it in Phase 1.
-- No LangGraph / MCP / RAG yet — those are Phase 2–3. This starter is the system of record they will plug into.
+## Layout — clean architecture, module first
+Modules stay the top-level boundary (one package per bounded context, so a module can be lifted out whole in the Phase 5 strangler split). Inside each module, strict layers: `controller` → `service` → `repository` → `model`, with `dto` at the boundary. Controllers never return entities — only DTOs. Shared cross-cutting code lives in `common/`.
 
-## Layout
 ```
 src/main/java/com/epitomejob/
   EpitomeJobApplication.java
-  common/      GlobalExceptionHandler, ApiError, SecurityUtil
-  identity/    User, RefreshToken, JwtService, AuthService, AuthController, JwtAuthFilter, SecurityConfig, AuthSeeder
-  profile/     Profile, ProfileService, ProfileController
-  resume/      Resume, ResumeService, ResumeController, BlobStorageService
-  approval/    Approval, ApprovalService, ApprovalController, ApprovalSseController
+  common/
+    config/      OpenApiConfig
+    constants/   AppConstants            # THE rule: a literal used twice lives here
+    exception/   ApiError, GlobalExceptionHandler
+    filter/      TraceIdFilter           # X-Request-Id in, MDC traceId, echo on response
+    security/    SecurityConfig, JwtAuthFilter, AppUserDetailsService
+    util/        HashUtil, SecurityUtil
+  identity/      M2 — controller/ service/ repository/ model/ dto/ config/ (AuthSeeder, dev only)
+  profile/       M3 — controller/ service/ repository/ model/ dto/
+  resume/        M4 — controller/ service/ repository/ model/ dto/
+  approval/      M7 — controller/ service/ repository/ model/ dto/
 src/main/resources/application.yml, db/migration/V1__identity.sql, V2__profile_resume_approval.sql
-src/test/java/com/epitomejob/identity/JwtServiceTest.java, approval/ApprovalServiceTest.java
+src/test/java/com/epitomejob/
+  common/ identity/ profile/ resume/ approval/   # unit + @WebMvcTest slices
+  integration/GateJourneyIT.java                  # Testcontainers end-to-end gate
+  EpitomeJobApplicationTests.java                 # context smoke test (H2 profile)
 ```
+
+## Rules this codebase follows
+- **No hardcoded strings:** statuses (`PENDING`, `READY`…), claims, headers, limits, and error messages live in `AppConstants`. If a string appears twice, it moves there.
+- **DTOs at the boundary:** requests are validated records; responses are DTOs. Entities never leave the service layer (the resume response hides the storage path and parsed text; the approval response hides the token hash).
+- **Security:** BCrypt cost 12; signed JWTs (`parseSignedClaims` — see the SampAgent lesson in `JwtService`); refresh rotation with reuse detection that revokes all tokens on suspected theft; generic login errors; no stack traces to clients; every error carries a `traceId`.
+- **Approval gate:** nothing a user asks the system to do on their behalf executes without an approval; decisions are idempotent; approvals expire after 24h.
+
+## Honest limits (Phase 0)
+- Dev seed user + dev JWT secret are dev-only. Change them before any shared deployment.
+- Resume parsing is PDF-only in Phase 0 (DOCX comes in Phase 3). No refresh-token flow UI yet — the API exists, the mobile client wires it in Phase 1.
+- No rate limiting on `/auth/login` yet (brute-force protection is a Phase 1 item; the `login_attempts` table is reserved for it).
+- No LangGraph / MCP / RAG yet — those are Phase 2–3. This starter is the system of record they will plug into.

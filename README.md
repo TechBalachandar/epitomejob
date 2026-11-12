@@ -18,7 +18,7 @@ or writes anything without your approval.**
 
 | Path | What it is |
 |---|---|
-| `backend/` | Phase 0 backend starter — Spring Boot 3.5.4 / Java 21, Postgres 16 + MinIO, JWT auth (M2), Profile (M3), Resume PDF upload (M4), approval gate + SSE (M7). See `backend/README.md` for the run + gate steps |
+| `backend_backup` | Phase 0 backend starter — Spring Boot 3.5.4 / Java 21, Postgres 16 + MinIO, JWT auth (M2), Profile (M3), Resume PDF upload (M4), approval gate + SSE (M7). See `backend_backup` for the run + gate steps |
 | `docs/` | Execution plan v3 (current), UI-first plan v2, best execution plan, system design, plan validation, LLD Bible v2 (HTML), market research report |
 | `.github/workflows/` | `ci.yml` (PR checks) and `nightly.yml` (full suite, daily 6:00 AM ET) |
 
@@ -32,7 +32,7 @@ mvn spring-boot:run    # http://localhost:8080
 ```
 
 Run the Phase 0 gate (health → register → login → profile → resume → approval → approve)
-with the curls in `backend/README.md`. The web UI (W0) is being built next — see
+with the curls in `backend_backup`. The web UI (W0) is being built next — see
 `docs/EpitomeJob-Execution-Plan-v3-Updated.md`.
 
 ## Rules

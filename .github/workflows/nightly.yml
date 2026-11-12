@@ -25,10 +25,9 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-          cache-dependency-path: backend/pom.xml
-      - name: Run backend tests
+      - name: Run backend tests + coverage gate
         working-directory: backend
-        run: mvn -B test
+        run: mvn -B verify
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -42,6 +41,7 @@ jobs:
           REPORT_DATE=$(TZ=America/New_York date +%F)
           REPORT="qa-reports/${REPORT_DATE}.md"
           COUNTS=$(awk -F'[:,]' '/Tests run/{run+=$2; fail+=$4; err+=$6} END{print (run+0)" "(fail+0)" "(err+0)}' backend/target/surefire-reports/*.txt 2>/dev/null || echo "0 0 0")
+          COVERAGE=$(awk -F',' 'NR>1 {missed+=$8; covered+=$9} END {if (missed+covered>0) printf "%.1f%%", 100*covered/(missed+covered); else print "n/a"}' backend/target/site/jacoco/jacoco.csv 2>/dev/null || echo "n/a")
           set -- $COUNTS
           if [ "$1" = "0" ] && [ "$2" = "0" ] && [ "$3" = "0" ] && [ ! -d backend/target/surefire-reports ]; then
             VERDICT="🔴 FAIL — no test reports found (build or test run did not produce output)"
@@ -55,6 +55,7 @@ jobs:
             echo ""
             echo "- Verdict: ${VERDICT}"
             echo "- Backend tests: $1 run, $2 failures, $3 errors"
+            echo "- Coverage (lines): $COVERAGE (gate: 80% lines / 70% branches)"
             echo "- Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo "- Trigger: ${GITHUB_EVENT_NAME} at $(TZ=America/New_York date '+%H:%M %Z')"
             echo "- Commit: ${GITHUB_SHA}"
