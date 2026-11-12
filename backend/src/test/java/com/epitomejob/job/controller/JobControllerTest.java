@@ -64,7 +64,7 @@ class JobControllerTest {
     when(service.search(eq("backend"), any(), any(), any(), eq(PageRequest.of(0, 20))))
         .thenReturn(new PageImpl<>(List.of(jobDto()), PageRequest.of(0, 20), 1));
 
-    mockMvc.perform(get("/jobs?query=backend").header("Authorization", "Bearer <redacted>"))
+    mockMvc.perform(get("/jobs?query=backend").header("Authorization", "Bearer test-token"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.page").value(0))
         .andExpect(jsonPath("$.size").value(20))
@@ -79,7 +79,7 @@ class JobControllerTest {
     authenticate();
     when(service.getJob(JOB_ID)).thenReturn(jobDto());
 
-    mockMvc.perform(get("/jobs/" + JOB_ID).header("Authorization", "Bearer <redacted>"))
+    mockMvc.perform(get("/jobs/" + JOB_ID).header("Authorization", "Bearer test-token"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.company").value("Northwind Health Systems"));
   }
@@ -90,7 +90,7 @@ class JobControllerTest {
     when(service.getJob(JOB_ID))
         .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Job not found"));
 
-    mockMvc.perform(get("/jobs/" + JOB_ID).header("Authorization", "Bearer <redacted>"))
+    mockMvc.perform(get("/jobs/" + JOB_ID).header("Authorization", "Bearer test-token"))
         .andExpect(status().isNotFound());
   }
 

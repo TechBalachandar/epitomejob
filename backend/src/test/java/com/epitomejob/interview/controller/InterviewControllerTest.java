@@ -67,7 +67,7 @@ class InterviewControllerTest {
         new QuestionDto(QUESTION_ID, "Explain REST APIs.", "Technical", "Backend")));
 
     mockMvc.perform(get("/interviews/questions?jobId=" + JOB_ID)
-            .header("Authorization", "Bearer <redacted>"))
+            .header("Authorization", "Bearer test-token"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$[0].category").value("Technical"));
   }
@@ -77,7 +77,7 @@ class InterviewControllerTest {
     authenticate();
 
     mockMvc.perform(get("/interviews/questions")
-            .header("Authorization", "Bearer <redacted>"))
+            .header("Authorization", "Bearer test-token"))
         .andExpect(status().isBadRequest());
   }
 
@@ -87,7 +87,7 @@ class InterviewControllerTest {
     when(service.createSession(JOB_ID)).thenReturn(sessionDto());
 
     mockMvc.perform(post("/interviews/sessions")
-            .header("Authorization", "Bearer <redacted>")
+            .header("Authorization", "Bearer test-token")
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"jobId\":\"" + JOB_ID + "\"}"))
         .andExpect(status().isCreated())
@@ -103,7 +103,7 @@ class InterviewControllerTest {
     when(service.submitAnswer(eq(SESSION_ID), eq(QUESTION_ID), any())).thenReturn(answer);
 
     mockMvc.perform(post("/interviews/sessions/" + SESSION_ID + "/answers")
-            .header("Authorization", "Bearer <redacted>")
+            .header("Authorization", "Bearer test-token")
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"questionId\":\"" + QUESTION_ID + "\",\"answerText\":\"My answer.\"}"))
         .andExpect(status().isOk())
@@ -116,7 +116,7 @@ class InterviewControllerTest {
     authenticate();
 
     mockMvc.perform(post("/interviews/sessions/" + SESSION_ID + "/answers")
-            .header("Authorization", "Bearer <redacted>")
+            .header("Authorization", "Bearer test-token")
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"questionId\":\"" + QUESTION_ID + "\",\"answerText\":\"  \"}"))
         .andExpect(status().isBadRequest());
@@ -128,7 +128,7 @@ class InterviewControllerTest {
     when(service.getSession(SESSION_ID)).thenReturn(sessionDto());
 
     mockMvc.perform(get("/interviews/sessions/" + SESSION_ID)
-            .header("Authorization", "Bearer <redacted>"))
+            .header("Authorization", "Bearer test-token"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.jobTitle").value("Senior Software Engineer, Backend (Java)"));
   }
@@ -140,7 +140,7 @@ class InterviewControllerTest {
         .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Interview session not found"));
 
     mockMvc.perform(get("/interviews/sessions/" + SESSION_ID)
-            .header("Authorization", "Bearer <redacted>"))
+            .header("Authorization", "Bearer test-token"))
         .andExpect(status().isNotFound());
   }
 
@@ -150,7 +150,7 @@ class InterviewControllerTest {
     when(service.listMine()).thenReturn(List.of(sessionDto()));
 
     mockMvc.perform(get("/interviews/sessions/me")
-            .header("Authorization", "Bearer <redacted>"))
+            .header("Authorization", "Bearer test-token"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$[0].status").value("IN_PROGRESS"));
   }

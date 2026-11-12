@@ -65,7 +65,7 @@ class TrackerControllerTest {
     when(service.create(eq(JOB_ID), any())).thenReturn(dto());
 
     mockMvc.perform(post("/tracker")
-            .header("Authorization", "Bearer <redacted>")
+            .header("Authorization", "Bearer test-token")
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"jobId\":\"" + JOB_ID + "\"}"))
         .andExpect(status().isCreated())
@@ -79,7 +79,7 @@ class TrackerControllerTest {
         .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT, "Job already saved in tracker"));
 
     mockMvc.perform(post("/tracker")
-            .header("Authorization", "Bearer <redacted>")
+            .header("Authorization", "Bearer test-token")
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"jobId\":\"" + JOB_ID + "\"}"))
         .andExpect(status().isConflict());
@@ -90,7 +90,7 @@ class TrackerControllerTest {
     authenticate();
 
     mockMvc.perform(post("/tracker")
-            .header("Authorization", "Bearer <redacted>")
+            .header("Authorization", "Bearer test-token")
             .contentType(MediaType.APPLICATION_JSON)
             .content("{}"))
         .andExpect(status().isBadRequest());
@@ -101,7 +101,7 @@ class TrackerControllerTest {
     authenticate();
     when(service.listMine()).thenReturn(List.of(dto()));
 
-    mockMvc.perform(get("/tracker/me").header("Authorization", "Bearer <redacted>"))
+    mockMvc.perform(get("/tracker/me").header("Authorization", "Bearer test-token"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$[0].company").value("Northwind Health Systems"));
   }
@@ -116,7 +116,7 @@ class TrackerControllerTest {
         .thenReturn(applied);
 
     mockMvc.perform(put("/tracker/" + ENTRY_ID)
-            .header("Authorization", "Bearer <redacted>")
+            .header("Authorization", "Bearer test-token")
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"status\":\"APPLIED\",\"notes\":\"Applied via portal\"}"))
         .andExpect(status().isOk())
@@ -128,7 +128,7 @@ class TrackerControllerTest {
     authenticate();
 
     mockMvc.perform(delete("/tracker/" + ENTRY_ID)
-            .header("Authorization", "Bearer <redacted>"))
+            .header("Authorization", "Bearer test-token"))
         .andExpect(status().isNoContent());
   }
 }

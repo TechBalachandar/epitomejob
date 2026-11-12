@@ -186,7 +186,7 @@ class InterviewServiceTest {
         5, 5, 5, 5, 50, List.of("Good start — add one concrete example and tighten the structure."));
     Answer second = new Answer(SESSION_ID, q2.getId(), "second",
         5, 5, 5, 5, 50, List.of("Good start — add one concrete example and tighten the structure."));
-    when(answers.findBySessionId(SESSION_ID)).thenReturn(List.of(first, second));
+    when(answers.findBySessionId(session.getId())).thenReturn(List.of(first, second));
     when(sessions.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
     AnswerDto dto = service().submitAnswer(SESSION_ID, q2.getId(),
@@ -200,8 +200,6 @@ class InterviewServiceTest {
   @Test
   void questionsFallBackToGeneralRole() {
     authenticate();
-    Job j = job();
-    when(jobs.findById(JOB_ID)).thenReturn(Optional.of(j));
     Question general = new Question("General", "Behavioral", "General question",
         List.of("situation", "action"), 1);
     when(questions.findByRoleOrderBySortOrderAsc("Backend")).thenReturn(List.of());

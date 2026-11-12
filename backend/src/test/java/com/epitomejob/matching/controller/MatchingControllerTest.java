@@ -64,7 +64,7 @@ class MatchingControllerTest {
     authenticate();
     when(service.matchesForMe()).thenReturn(List.of(match()));
 
-    mockMvc.perform(get("/matches/me").header("Authorization", "Bearer <redacted>"))
+    mockMvc.perform(get("/matches/me").header("Authorization", "Bearer test-token"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$[0].score").value(82))
         .andExpect(jsonPath("$[0].source").value("RESUME"))
@@ -76,7 +76,7 @@ class MatchingControllerTest {
     authenticate();
     when(service.matchForJob(JOB_ID)).thenReturn(match());
 
-    mockMvc.perform(get("/matches/" + JOB_ID).header("Authorization", "Bearer <redacted>"))
+    mockMvc.perform(get("/matches/" + JOB_ID).header("Authorization", "Bearer test-token"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.job.id").value(JOB_ID.toString()));
   }
@@ -87,7 +87,7 @@ class MatchingControllerTest {
     when(service.matchForJob(JOB_ID))
         .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Job not found"));
 
-    mockMvc.perform(get("/matches/" + JOB_ID).header("Authorization", "Bearer <redacted>"))
+    mockMvc.perform(get("/matches/" + JOB_ID).header("Authorization", "Bearer test-token"))
         .andExpect(status().isNotFound());
   }
 }
