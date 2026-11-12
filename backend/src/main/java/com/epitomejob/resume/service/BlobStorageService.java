@@ -4,6 +4,7 @@ import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -20,6 +21,12 @@ public class BlobStorageService {
   private final MinioClient minio;
   private final String bucket;
 
+  /**
+   * @Autowired is required here: this class has two constructors, and with
+   * more than one Spring picks none of them implicitly — without it the
+   * app fails to boot with "No default constructor found".
+   */
+  @Autowired
   public BlobStorageService(@Value("${app.minio.endpoint}") String endpoint,
                             @Value("${app.minio.access-key}") String accessKey,
                             @Value("${app.minio.secret-key}") String secretKey,
@@ -38,6 +45,6 @@ public class BlobStorageService {
       minio.makeBucket(MakeBucketArgs.builder().bucket(bucket).build());
     }
     minio.putObject(PutObjectArgs.builder().bucket(bucket).object(path)
-        .stream(data, size, -1).contentType(contentType).build());
+            .stream(data, size, -1).contentType(contentType).build());
   }
 }

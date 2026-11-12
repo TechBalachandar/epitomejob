@@ -49,7 +49,7 @@ class ResumeServiceTest {
 
   private void authenticate() {
     SecurityContextHolder.getContext().setAuthentication(
-        new UsernamePasswordAuthenticationToken(USER_ID.toString(), null, List.of()));
+            new UsernamePasswordAuthenticationToken(USER_ID.toString(), null, List.of()));
   }
 
   private ResumeService service() {
@@ -92,7 +92,7 @@ class ResumeServiceTest {
     authenticate();
     when(resumes.save(any())).thenAnswer(inv -> inv.getArgument(0));
     var file = new MockMultipartFile("file", "resume.pdf", "application/pdf",
-        "this is not a pdf at all".getBytes());
+            "this is not a pdf at all".getBytes());
 
     Resume saved = service().upload(file);
 
@@ -111,8 +111,8 @@ class ResumeServiceTest {
   void uploadNonPdfIsBadRequest() {
     authenticate();
     var file = new MockMultipartFile("file", "resume.docx",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "fake".getBytes());
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "fake".getBytes());
     var ex = assertThrows(ResponseStatusException.class, () -> service().upload(file));
     assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
   }
@@ -123,7 +123,8 @@ class ResumeServiceTest {
     MultipartFile file = mock(MultipartFile.class);
     when(file.isEmpty()).thenReturn(false);
     when(file.getSize()).thenReturn(11L * 1024 * 1024);
-    when(file.getOriginalFilename()).thenReturn("resume.pdf");
+    // No getOriginalFilename() stub: the size check throws before the name is ever read,
+    // and Mockito strict stubs fail the test on an unused stub.
     var ex = assertThrows(ResponseStatusException.class, () -> service().upload(file));
     assertEquals(HttpStatus.PAYLOAD_TOO_LARGE, ex.getStatusCode());
   }
