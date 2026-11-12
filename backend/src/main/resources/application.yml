@@ -8,6 +8,7 @@ spring:
     username: epitomejob
     password: epitomejob-dev
   jpa:
+    open-in-view: false
     hibernate:
       ddl-auto: validate
     properties:
@@ -34,6 +35,9 @@ management:
 logging:
   level:
     com.epitomejob: INFO
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
 ---
 spring:
   config:
@@ -43,9 +47,13 @@ spring:
     url: jdbc:h2:mem:epitomejob-test;DB_CLOSE_DELAY=-1
     driver-class-name: org.h2.Driver
     username: sa
-    password: ""
+    password: sa
   jpa:
     hibernate:
       ddl-auto: create-drop
+    properties:
+      hibernate:
+        hbm2ddl:
+          create_namespaces: true
   flyway:
     enabled: false
