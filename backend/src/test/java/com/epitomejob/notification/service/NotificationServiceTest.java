@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -230,7 +231,11 @@ class NotificationServiceTest {
   @Test
   void derivedWarningNotPrependedOnLaterPages() {
     authenticate();
-    profileWithClockStartedDaysAgo(46); // daysLeft = 14
+    // Active clock (14 days left) — would warn on page 0, but the service
+    // never loads the profile for later pages, so this stub is lenient.
+    Profile profile = new Profile(USER_ID);
+    profile.setH1bClockStartDate(LocalDate.now(ZoneOffset.UTC).minusDays(46));
+    lenient().when(profiles.findByUserId(USER_ID)).thenReturn(Optional.of(profile));
     when(notifications.findByUserId(any(), any()))
         .thenReturn(new PageImpl<>(List.of(), PageRequest.of(1, 20), 0));
 
