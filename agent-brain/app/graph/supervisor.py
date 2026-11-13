@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 from langgraph.graph import END, START, StateGraph
 
-from app.graph.router import route_fallback, route_with_llm
+from app.graph.router import route_fallback, route_message
 from app.graph.specialists import FALLBACK_SUFFIX, SPECIALIST_NODES, SpecialistContext
 from app.graph.state import SPECIALISTS, ChatAction, Citation, CoachState
 from app.java_client import JavaClient
@@ -45,8 +45,9 @@ def _supervisor_node(ctx: SpecialistContext):
         if state.get("ollama_down"):
             specialist = route_fallback(message)
         else:
-            routed = await route_with_llm(message, ctx.llm)
-            specialist = routed if routed is not None else route_fallback(message)
+            # Fallback wins: a keyword match decides; the LLM decides only
+            # when no keyword matched.
+            specialist = await route_message(message, ctx.llm)
         return CoachState(specialist=specialist, next=specialist)
 
     return supervisor
@@ -63,25 +64,14 @@ def _specialist_node(name: str, ctx: SpecialistContext):
 
 def _respond_node(ctx: SpecialistContext):
     async def respond(state: CoachState) -> CoachState:
+        # No LLM rewrite here on purpose: three eval rounds proved the
+        # rewrite re-renders a good deterministic draft into echo,
+        # approval claims, and invented facts on llama3.1:8b, and prompt
+        # bans did not hold at temperature 0.8. The specialist drafts
+        # are already plain-text answers, so the reply is the draft
+        # verbatim — the respond node only adds the offline suffix.
         draft = state.get("reply_draft") or "I could not produce an answer for that — please try rephrasing."
         reply = draft
-        if not state.get("ollama_down"):
-            composed = await ctx.llm.chat(
-                [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are EpitomeJob's coach. Rewrite the specialist's draft "
-                            "below as a clear, plain-text answer. Keep every fact, "
-                            "job title, company, number and link exactly as given. "
-                            "Do not invent jobs, scores or links. Keep it concise."
-                        ),
-                    },
-                    {"role": "user", "content": draft},
-                ]
-            )
-            if composed:
-                reply = composed
         if state.get("ollama_down") and FALLBACK_SUFFIX not in reply:
             reply = reply.rstrip() + "\n\n" + FALLBACK_SUFFIX
         return CoachState(reply_draft=reply)

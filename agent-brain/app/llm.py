@@ -55,13 +55,26 @@ class OllamaClient:
             logger.debug("Ollama probe failed: %s", exc)
             return False
 
-    async def chat(self, messages: list[dict[str, str]]) -> str | None:
-        """Chat completion. Returns the reply text, or None if Ollama is down."""
+    async def chat(
+        self, messages: list[dict[str, str]], temperature: float | None = None
+    ) -> str | None:
+        """Chat completion. Returns the reply text, or None if Ollama is down.
+
+        Pass ``temperature`` to pin sampling (e.g. 0 for deterministic
+        routing/judging); omitted means Ollama's default.
+        """
         try:
             client = self._get_client()
+            payload: dict[str, object] = {
+                "model": self.chat_model,
+                "messages": messages,
+                "stream": False,
+            }
+            if temperature is not None:
+                payload["options"] = {"temperature": temperature}
             resp = await client.post(
                 "/api/chat",
-                json={"model": self.chat_model, "messages": messages, "stream": False},
+                json=payload,
                 timeout=self.timeout_s,
             )
             if resp.status_code != 200:

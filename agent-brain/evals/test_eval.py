@@ -72,7 +72,13 @@ class FakeJava:
         return [{"id": RESUME_ID, "status": "READY"}]
 
     async def get_resume_text(self, resume_id: str) -> dict[str, object]:
-        return {"resumeId": resume_id, "text": "Java developer with Spring Boot and Kafka experience."}
+        return {"resumeId": resume_id, "text": (
+            "Balachandar Jeldi — Senior Java Developer\n"
+            "17 years building banking and enterprise systems with Java and Spring Boot.\n"
+            "- Led a team of 10 engineers delivering mobile banking APIs used by millions of members.\n"
+            "- Built Kafka event pipelines processing 50,000 messages per second.\n"
+            "- Skills: Java, Spring Boot, Kafka, Spring Security, PostgreSQL, Azure."
+        )}
 
     async def list_jobs(self, **kwargs: object) -> list[dict[str, object]]:
         return [
@@ -98,7 +104,11 @@ class FakeJava:
         return []
 
     async def get_interview_questions(self, job_id: str | None = None) -> list[dict[str, object]]:
-        return [{"question": "Tell me about a system you designed."}]
+        return [
+            {"question": "Tell me about a system you designed."},
+            {"question": "How do you handle a production outage in a Java service?"},
+            {"question": "Explain how you would design a rate limiter."},
+        ]
 
     async def list_interview_sessions(self) -> list[dict[str, object]]:
         return []
@@ -216,7 +226,8 @@ async def test_judge_relevance_grounding(q: dict[str, object]) -> None:
                 "role": "user",
                 "content": f"Question: {q['question']}\nAnswer: {reply}\nScore (1-5):",
             },
-        ]
+        ],
+        temperature=0,  # deterministic measurement: same reply, same score
     )
     await llm.aclose()
     assert verdict is not None, "judge LLM returned nothing"
