@@ -7,7 +7,7 @@ import { test, expect, type Page } from "@playwright/test";
 // in-memory session alive) and assert each page renders with no console
 // errors.
 const PAGES = [
-  { nav: "Dashboard", heading: "Good morning, Dev" },
+  { nav: "Dashboard", heading: /Good (morning|afternoon|evening)/ },
   { nav: "Profile", heading: "Profile" },
   { nav: "Resumes", heading: "Resumes" },
   { nav: "Jobs", heading: "Jobs" },
@@ -39,6 +39,11 @@ const PROFILE = {
   salaryMax: 190000,
   currency: "USD",
   visibility: "PUBLIC",
+  skills: ["Java", "LangGraph", "Spring Boot"],
+  // Clock started 30 days ago → 30 days left (active) on the dashboard.
+  h1bClockStartDate: new Date(Date.now() - 30 * 24 * 3_600_000)
+    .toISOString()
+    .slice(0, 10),
   completeness: 80,
   createdAt: "2026-10-13T00:00:00.000Z",
   updatedAt: "2026-11-10T00:00:00.000Z",
@@ -380,6 +385,12 @@ async function stubApi(page: Page) {
       },
     }),
   );
+  // --- M13 bell stub: the header bell polls the unread count on every
+  // authenticated page; without this the BFF 500s (no backend in e2e)
+  // and the smoke test's zero-console-errors assertion fails.
+  await page.route("**/api/notifications/unread-count", (route) =>
+    route.fulfill({ status: 200, json: { unreadCount: 0 } }),
+  );
   // --- W4 billing stubs (contract §1f): billing off by default ----------
   await page.route("**/api/billing/status", (route) =>
     route.fulfill({ status: 200, json: { enabled: false, provider: "stripe" } }),
@@ -413,7 +424,7 @@ test.describe("W1 smoke", () => {
     await page.getByLabel("Password").fill("DevPass123!");
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(
-      page.getByRole("heading", { name: "Good morning, Dev" }),
+      page.getByRole("heading", { name: /Good (morning|afternoon|evening)/ }),
     ).toBeVisible({ timeout: 15_000 });
   }
 
