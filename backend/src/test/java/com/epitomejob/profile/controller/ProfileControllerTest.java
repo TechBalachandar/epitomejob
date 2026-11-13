@@ -98,7 +98,12 @@ class ProfileControllerTest {
   @Test
   void putMeRoundTripsNewFields() throws Exception {
     authenticate();
-    when(service.upsertMe(any())).thenReturn(response());
+    when(service.upsertMe(any())).thenAnswer(inv -> {
+      ProfileUpdateRequest req = inv.getArgument(0);
+      return new ProfileResponse(UUID.randomUUID(), USER_ID, "Java Developer", null,
+          "Reston, VA", "REMOTE", null, null, req.currency(), req.visibility(),
+          req.skills(), req.h1bClockStartDate(), 60, Instant.now(), Instant.now());
+    });
 
     mockMvc.perform(put("/profiles/me")
             .header("Authorization", "Bearer test-token")

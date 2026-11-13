@@ -205,7 +205,6 @@ class ProfileServiceTest {
   @Test
   void upsertBadVisibilityIs400() {
     authenticate();
-    when(profiles.findByUserId(USER_ID)).thenReturn(Optional.empty());
 
     ResponseStatusException ex = assertThrows(ResponseStatusException.class,
         () -> service().upsertMe(new ProfileUpdateRequest(
