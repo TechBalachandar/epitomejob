@@ -182,3 +182,37 @@ export interface CoachChatResponse {
   }[];
   specialistsUsed: string[];
 }
+
+// --- W4: Billing (contract §1e/§6 — camelCase on the wire) ----------------
+
+/** GET /billing/status — always 200, even when the flag is off. */
+export interface BillingStatus {
+  enabled: boolean;
+  provider: "stripe" | "fake";
+}
+
+/** GET /billing/plans — one seed plan (contract §1b). */
+export interface BillingPlan {
+  code: string;
+  name: string;
+  priceCents: number;
+  currency: string;
+  durationDays: number | null;
+  description: string;
+  active: boolean;
+}
+
+/** POST /billing/checkout — 201. HUMAN_REVIEWED has checkoutUrl null. */
+export interface CheckoutResult {
+  checkoutSessionId: string;
+  provider: string;
+  checkoutUrl: string | null;
+  status: "CREATED" | "PENDING_MANUAL";
+}
+
+/** GET /billing/entitlement/me. */
+export interface Entitlement {
+  planCode: string | null;
+  status: "ACTIVE" | "EXPIRED" | "PENDING_MANUAL" | "NONE";
+  expiresAt: string | null;
+}

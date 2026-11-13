@@ -1,0 +1,281 @@
+# EpitomeJob W4 — full Docker Compose stack (W4-API-CONTRACT.md §2a).
+# One command from the repo root:  docker compose up -d
+# Project name: epitomejob. Ollama is NOT in compose — it runs on the Mac
+# host and containers reach it via host.docker.internal:11434 (§2c).
+#
+# VERIFIED TAG CHANGES vs the contract (see report):
+# - temporalio/auto-setup:1.32.2 DOES NOT EXIST on Docker Hub (auto-setup
+#   publishing stopped after 1.29). Closest verified tag: 1.29.7
+#   (2026-06-12). temporalio/server:1.32.2 exists, but that image has no
+#   auto-setup behaviour, so it is NOT a drop-in substitute here.
+# - temporal-ui healthcheck uses wget, not curl: the temporalio/ui image is
+#   alpine-minirootfs + bash + the Go ui-server binary; no curl is installed.
+#   BusyBox wget IS present in alpine minirootfs.
+# - rustfs healthcheck probes /health/ready (not /minio/health/live):
+#   /health is the native RustFS liveness path and /health/ready is the
+#   readiness path (503 until storage is initialised); /minio/health/live
+#   is only a MinIO-compat alias. Readiness is what `backend` must gate on.
+# - web Dockerfile installs curl (node:22-alpine has no curl), so the
+#   contract's `curl -f http://localhost:3000/login` healthcheck works.
+# - agent-brain carries extra_hosts host.docker.internal:host-gateway so
+#   Ollama on the host also resolves on Linux Docker (no-op on Mac).
+#
+# Volumes pgdata / rustfsdata are EXTERNAL (backend_pgdata /
+# backend_rustfsdata) — the root stack reuses the volumes the existing
+# backend/ compose stack already created, so users/resumes/approvals
+# survive the move. NEVER run the root stack and the backend/ stack at the
+# same time (port conflicts). `docker compose down` (no -v) never removes
+# external volumes.
+#
+# FIRST RUN ONLY (volume already exists, so the init script below never
+# runs): while the backend stack is up, create the Temporal databases:
+#   docker compose -f backend/docker-compose.yml exec postgres psql \
+#     -U epitomejob -d epitomejob \
+#     -c "CREATE DATABASE temporal;" -c "CREATE DATABASE temporal_visibility;"
+# (Second run errors "already exists" — harmless.)
+
+name: epitomejob
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: epitomejob
+      POSTGRES_USER: epitomejob
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-epitomejob-dev}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Runs ONLY on a fresh volume; the existing backend_pgdata volume
+      # already exists, so the manual CREATE DATABASE step above applies.
+      - ./docker/postgres/init-temporal-dbs.sql:/docker-entrypoint-initdb.d/init-temporal-dbs.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U epitomejob -d epitomejob"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rustfs:
+    image: rustfs/rustfs:1.0.1
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      RUSTFS_ACCESS_KEY: minioadmin
+      RUSTFS_SECRET_KEY: minioadmin-dev
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+      RUSTFS_CONSOLE_ENABLE: "true"
+    volumes:
+      - rustfsdata:/data
+    healthcheck:
+      # Native RustFS readiness path (200 only once storage is initialised).
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  temporal:
+    image: temporalio/auto-setup:1.29.7
+    ports:
+      - "7233:7233"
+    environment:
+      DB: postgresql
+      DB_PORT: "5432"
+      POSTGRES_USER: epitomejob
+      POSTGRES_PWD: ${POSTGRES_PASSWORD:-epitomejob-dev}
+      POSTGRES_SEEDS: postgres
+      DBNAME: temporal
+      VISIBILITY_DBNAME: temporal_visibility
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # tctl ships in the auto-setup image; this is the healthcheck used
+      # by the Temporal community compose files. Fallback if tctl is ever
+      # absent: a TCP connect to temporal:7233.
+      test: ["CMD", "tctl", "--address", "temporal:7233", "cluster", "health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  temporal-ui:
+    image: temporalio/ui:2.56.1
+    ports:
+      - "8233:8080"
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    depends_on:
+      temporal:
+        condition: service_healthy
+    healthcheck:
+      # UI serves on 8080 in-container (TEMPORAL_UI_PORT default 8080).
+      # wget, not curl: the ui image has no curl installed.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: epitomejob/backend:w4
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/epitomejob
+      SPRING_DATASOURCE_USERNAME: epitomejob
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-epitomejob-dev}
+      APP_JWT_SECRET: ${APP_JWT_SECRET:-dev-only-secret-change-me}
+      MINIO_ENDPOINT: http://rustfs:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin-dev
+      AGENT_BRAIN_URL: http://agent-brain:8000
+      BILLING_ENABLED: ${BILLING_ENABLED:-false}
+      BILLING_PROVIDER: ${BILLING_PROVIDER:-stripe}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  agent-brain:
+    build:
+      context: ./agent-brain
+      dockerfile: Dockerfile
+    image: epitomejob/agent-brain:w4
+    ports:
+      - "8000:8000"
+    environment:
+      # Env names are exactly the pydantic-settings fields in
+      # agent-brain/app/config.py (field `java_base_url` -> JAVA_BASE_URL,
+      # etc.). Defaults in config.py point at localhost, which is wrong
+      # inside a container — every service address is overridden here.
+      JAVA_BASE_URL: http://backend:8080
+      DATABASE_URL: postgresql://epitomejob:${POSTGRES_PASSWORD:-epitomejob-dev}@postgres:5432/epitomejob
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_ENABLED: "true"
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_CHAT_MODEL: llama3.1:8b
+      OLLAMA_EMBED_MODEL: nomic-embed-text
+      AGENT_BRAIN_PORT: "8000"
+      MCP_PORT: "8001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    healthcheck:
+      # /health returns 200 even when Ollama is down (ollama: "down") —
+      # expected when Ollama is not running on the host (§2c).
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  mcp-server:
+    build:
+      context: ./agent-brain
+      dockerfile: Dockerfile
+    image: epitomejob/agent-brain:w4
+    command: python -m app.mcp.server
+    ports:
+      - "8001:8001"
+    environment:
+      JAVA_BASE_URL: http://backend:8080
+      DATABASE_URL: postgresql://epitomejob:${POSTGRES_PASSWORD:-epitomejob-dev}@postgres:5432/epitomejob
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_ENABLED: "true"
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_CHAT_MODEL: llama3.1:8b
+      OLLAMA_EMBED_MODEL: nomic-embed-text
+      AGENT_BRAIN_PORT: "8000"
+      MCP_PORT: "8001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    healthcheck:
+      # No unauthenticated HTTP health path exists: /sse requires a valid
+      # Bearer token (401 without one), so an HTTP probe can never pass.
+      # TCP connect via python (present in the image) proves the server
+      # is listening on 8001.
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('localhost', 8001), timeout=5)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  temporal-worker:
+    build:
+      context: ./agent-brain
+      dockerfile: Dockerfile
+    image: epitomejob/agent-brain:w4
+    command: python -m app.temporal.worker
+    environment:
+      JAVA_BASE_URL: http://backend:8080
+      DATABASE_URL: postgresql://epitomejob:${POSTGRES_PASSWORD:-epitomejob-dev}@postgres:5432/epitomejob
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_ENABLED: "true"
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_CHAT_MODEL: llama3.1:8b
+      OLLAMA_EMBED_MODEL: nomic-embed-text
+      AGENT_BRAIN_PORT: "8000"
+      MCP_PORT: "8001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      temporal:
+        condition: service_healthy
+    # No healthcheck: no HTTP endpoint. Liveness is visible in Temporal UI
+    # as task-queue `coach-queue` pollers.
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    image: epitomejob/web:w4
+    ports:
+      - "3000:3000"
+    environment:
+      # BFF server-side base (server-api.ts: API_URL ?? NEXT_PUBLIC_API_URL
+      # ?? http://localhost:8080). NEXT_PUBLIC_API_URL stays unset — the
+      # BFF is same-origin.
+      API_URL: http://backend:8080
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/login"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  pgdata:
+    external: true
+    name: backend_pgdata
+  rustfsdata:
+    external: true
+    name: backend_rustfsdata

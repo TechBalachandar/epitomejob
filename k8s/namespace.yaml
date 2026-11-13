@@ -1,0 +1,9 @@
+# EpitomeJob W4 — kind namespace.
+# W4-API-CONTRACT.md §4. Apply first (deploy-kind.sh does this explicitly)
+# because `kubectl apply -f k8s/` does not guarantee namespace-first order.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: epitomejob
+  labels:
+    app.kubernetes.io/name: epitomejob

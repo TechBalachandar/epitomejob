@@ -29,6 +29,12 @@ app:
     bucket: ${MINIO_BUCKET:resumes}
   agent-brain:
     url: ${AGENT_BRAIN_URL:http://localhost:8000}
+  # Public web origin — Stripe Checkout redirects here after payment.
+  public-url: ${APP_PUBLIC_URL:http://localhost:3000}
+features:
+  billing:
+    enabled: ${BILLING_ENABLED:false}
+    provider: ${BILLING_PROVIDER:stripe}   # stripe | fake
 management:
   endpoints:
     web:

@@ -11,6 +11,11 @@
     <jjwt.version>0.12.6</jjwt.version>
     <minio.version>8.5.13</minio.version>
     <springdoc.version>2.8.13</springdoc.version>
+    <!-- stripe-java: latest STABLE on Maven Central as of 2026-11-12 is 34.1.0
+         (34.2.0 is still a -beta.1 pre-release; verified against
+         https://repo.maven.apache.org/maven2/com/stripe/stripe-java/maven-metadata.xml
+         and the published 34.1.0 jar). -->
+    <stripe.version>34.1.0</stripe.version>
     <jacoco.version>0.8.12</jacoco.version>
     <!-- Boot 3.5.4 pins Testcontainers 1.21.3, whose docker-java talks API 1.32.
          Docker Engine 29 (Docker Desktop 4.52+) refuses anything below 1.44,
@@ -31,6 +36,7 @@
     <dependency><groupId>io.jsonwebtoken</groupId><artifactId>jjwt-impl</artifactId><version>${jjwt.version}</version><scope>runtime</scope></dependency>
     <dependency><groupId>io.jsonwebtoken</groupId><artifactId>jjwt-jackson</artifactId><version>${jjwt.version}</version><scope>runtime</scope></dependency>
     <dependency><groupId>io.minio</groupId><artifactId>minio</artifactId><version>${minio.version}</version></dependency>
+    <dependency><groupId>com.stripe</groupId><artifactId>stripe-java</artifactId><version>${stripe.version}</version></dependency>
     <dependency><groupId>org.apache.pdfbox</groupId><artifactId>pdfbox</artifactId><version>3.0.2</version></dependency>
     <dependency><groupId>io.micrometer</groupId><artifactId>micrometer-tracing-bridge-otel</artifactId></dependency>
     <dependency><groupId>org.springdoc</groupId><artifactId>springdoc-openapi-starter-webmvc-ui</artifactId><version>${springdoc.version}</version></dependency>

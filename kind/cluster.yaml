@@ -1,0 +1,37 @@
+# EpitomeJob W4 — kind cluster config.
+# W4-API-CONTRACT.md §4: cluster name `epitomejob`, 1 control-plane + 1 worker,
+# extraPortMappings for 3000 (web), 8080 (backend), 8233 (Temporal UI).
+#
+# Node image is PINNED by digest to the kind v0.33.0 default
+# (kindest/node:v1.37.0) — kind's own release notes require the @sha256 digest
+# to guarantee an image built for the kind release. kubectl v1.37.2 matches
+# this cluster's 1.37 minor exactly.
+#
+# NOTE on extraPortMappings: the W4 Services are ClusterIP (contract §4), so
+# host ports do NOT route to them directly — reach the stack with the
+# `kubectl port-forward` commands printed by k8s/deploy-kind.sh. The mappings
+# are kept per contract so the ports are reserved if a Service is later
+# changed to NodePort.
+#
+# Docker Desktop resources: this stack requests ~1.2 CPU / ~1.9 Gi total.
+# If Docker Desktop is set to 2 CPU / 2 GB, raise it first (Docker Desktop →
+# Settings → Resources → at least 4 CPU / 4 GB recommended) or pods will
+# stay Pending.
+apiVersion: kind.x-k8s.io/v1alpha4
+kind: Cluster
+name: epitomejob
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+    extraPortMappings:
+      - containerPort: 3000
+        hostPort: 3000
+        protocol: TCP
+      - containerPort: 8080
+        hostPort: 8080
+        protocol: TCP
+      - containerPort: 8233
+        hostPort: 8233
+        protocol: TCP
+  - role: worker
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5

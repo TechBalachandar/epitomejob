@@ -1,0 +1,77 @@
+# EpitomeJob W4 — non-secret environment, shared by the k8s Deployments.
+# W4-API-CONTRACT.md §4 + §2a/§6. Every name/value below matches §2a exactly;
+# in-cluster hostnames are the Service names (postgres, rustfs, temporal,
+# agent-brain, backend). Ollama runs on the Mac host: host.docker.internal:11434.
+# Secret values (passwords, JWT secret, Stripe keys) live in secret.yaml, NOT here.
+#
+# Deployments consume this ConfigMap with `envFrom`. Apps ignore env vars they
+# do not read (pydantic-settings extra="ignore"; Spring/Next ignore unknowns),
+# so sharing one ConfigMap across services is safe.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: epitomejob-config
+  namespace: epitomejob
+  labels:
+    app.kubernetes.io/name: epitomejob
+data:
+  # --- Postgres (contract §2a) ---
+  POSTGRES_DB: "epitomejob"
+  POSTGRES_USER: "epitomejob"
+
+  # --- RustFS / MinIO-compatible object storage (contract §2a) ---
+  RUSTFS_ACCESS_KEY: "minioadmin"
+  RUSTFS_ADDRESS: ":9000"
+  RUSTFS_CONSOLE_ADDRESS: ":9001"
+  RUSTFS_CONSOLE_ENABLE: "true"
+
+  # --- Temporal (contract §2a) ---
+  DB: "postgresql"
+  DB_PORT: "5432"
+  POSTGRES_SEEDS: "postgres"
+  DBNAME: "temporal"
+  VISIBILITY_DBNAME: "temporal_visibility"
+  TEMPORAL_ADDRESS: "temporal:7233"
+  TEMPORAL_CORS_ORIGINS: "http://localhost:3000"
+
+  # --- Backend (contract §2a; names from application.yml) ---
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/epitomejob"
+  SPRING_DATASOURCE_USERNAME: "epitomejob"
+  MINIO_ENDPOINT: "http://rustfs:9000"
+  MINIO_ACCESS_KEY: "minioadmin"
+  MINIO_BUCKET: "resumes"
+  AGENT_BRAIN_URL: "http://agent-brain:8000"
+  BILLING_ENABLED: "false"
+  BILLING_PROVIDER: "stripe"
+
+  # --- Agent-brain family (names from agent-brain/app/config.py) ---
+  JAVA_BASE_URL: "http://backend:8080"
+  OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+  OLLAMA_CHAT_MODEL: "llama3.1:8b"
+  OLLAMA_EMBED_MODEL: "nomic-embed-text"
+  AGENT_BRAIN_PORT: "8000"
+  MCP_PORT: "8001"
+  TEMPORAL_ENABLED: "true"
+  LANGSMITH_ENABLED: "false"
+
+  # --- Web (contract §2a) ---
+  # BFF server-side base. NEXT_PUBLIC_API_URL stays UNSET (BFF is same-origin).
+  API_URL: "http://backend:8080"
+---
+# EpitomeJob W4 — Postgres init script for a FRESH volume.
+# Same two CREATE DATABASE statements as docker/postgres/init-temporal-dbs.sql
+# (contract §2a). The postgres entrypoint runs *.sql files in
+# /docker-entrypoint-initdb.d/ only on first init of an empty data directory,
+# which is exactly when the Temporal databases do not exist yet. On an existing
+# PVC this is a no-op (same as compose: harmless if run twice).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: epitomejob
+  labels:
+    app.kubernetes.io/name: epitomejob
+data:
+  init-temporal-dbs.sql: |
+    CREATE DATABASE temporal;
+    CREATE DATABASE temporal_visibility;

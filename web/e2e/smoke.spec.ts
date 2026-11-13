@@ -16,6 +16,7 @@ const PAGES = [
   { nav: "Approvals", heading: "Approvals" },
   { nav: "Interviews", heading: "Interviews" },
   { nav: "Tracker", heading: "Tracker" },
+  { nav: "Plans", heading: "Plans" },
   { nav: "Learning", heading: "Learning" },
 ];
 
@@ -379,6 +380,19 @@ async function stubApi(page: Page) {
       },
     }),
   );
+  // --- W4 billing stubs (contract §1f): billing off by default ----------
+  await page.route("**/api/billing/status", (route) =>
+    route.fulfill({ status: 200, json: { enabled: false, provider: "stripe" } }),
+  );
+  await page.route("**/api/billing/plans", (route) =>
+    route.fulfill({ status: 404, json: { message: "Not found" } }),
+  );
+  await page.route("**/api/billing/checkout", (route) =>
+    route.fulfill({ status: 404, json: { message: "Not found" } }),
+  );
+  await page.route("**/api/billing/entitlement/me", (route) =>
+    route.fulfill({ status: 404, json: { message: "Not found" } }),
+  );
 }
 
 test.describe("W1 smoke", () => {
@@ -556,5 +570,35 @@ test.describe("W1 smoke", () => {
         document.documentElement.clientWidth,
     );
     expect(overflow).toBe(0);
+  });
+
+  test("W4 plans: billing-off note, three plans, checkout disabled", async ({ page }) => {
+    await login(page);
+    await gotoViaNav(page, "Plans");
+    await expect(
+      page.getByRole("heading", { name: "Plans", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Billing isn't connected yet — checkout opens once Stripe is linked. No payment is taken.",
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Sprint Pass", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Lifetime", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Human-Reviewed Package", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText("$79")).toBeVisible();
+    await expect(page.getByText("$149")).toBeVisible();
+    await expect(page.getByText("$299")).toBeVisible();
+    for (const name of ["Sprint Pass", "Lifetime", "Human-Reviewed Package"]) {
+      await expect(
+        page.getByRole("button", { name: `Checkout ${name}` }),
+      ).toBeDisabled();
+    }
   });
 });

@@ -44,6 +44,20 @@ public class GlobalExceptionHandler {
             MDC.get(AppConstants.Http.TRACE_ID_MDC_KEY)));
   }
 
+  @ExceptionHandler(AlreadyEntitledException.class)
+  public ResponseEntity<ApiError> handle(AlreadyEntitledException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(new ApiError(AppConstants.Errors.ALREADY_ENTITLED_CODE, ex.getMessage(),
+            MDC.get(AppConstants.Http.TRACE_ID_MDC_KEY)));
+  }
+
+  @ExceptionHandler(BillingNotConfiguredException.class)
+  public ResponseEntity<ApiError> handle(BillingNotConfiguredException ex) {
+    return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+        .body(new ApiError(AppConstants.Errors.BILLING_NOT_CONFIGURED_CODE, ex.getMessage(),
+            MDC.get(AppConstants.Http.TRACE_ID_MDC_KEY)));
+  }
+
   @ExceptionHandler(Exception.class)
   public ResponseEntity<ApiError> handle(Exception ex) {
     // Never leak a stack trace or an internal message to the client.

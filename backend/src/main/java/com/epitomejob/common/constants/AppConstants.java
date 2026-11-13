@@ -168,6 +168,54 @@ public final class AppConstants {
     private Coach() {}
   }
 
+  /** Billing (M14, W4 contract §1): plans, providers, sessions, entitlements. */
+  public static final class Billing {
+    /** Property names for the features.billing block (application.yml). */
+    public static final String FEATURE_PROVIDER = "features.billing.provider";
+    public static final String FEATURE_ENABLED = "features.billing.enabled";
+    /** Provider names, as selected by features.billing.provider. */
+    public static final String PROVIDER_STRIPE = "stripe";
+    public static final String PROVIDER_FAKE = "fake";
+    /** Plan codes, in seed order (V5__billing.sql). Do not invent others. */
+    public static final String PLAN_SPRINT_PASS = "SPRINT_PASS";
+    public static final String PLAN_LIFETIME = "LIFETIME";
+    public static final String PLAN_HUMAN_REVIEWED = "HUMAN_REVIEWED";
+    /** Display order for GET /billing/plans (seed order, not alphabetical). */
+    public static final java.util.List<String> SEED_ORDER = java.util.List.of(
+        PLAN_SPRINT_PASS, PLAN_LIFETIME, PLAN_HUMAN_REVIEWED);
+    /** Checkout session statuses (billing.checkout_sessions). */
+    public static final String SESSION_STATUS_CREATED = "CREATED";
+    public static final String SESSION_STATUS_PAID = "PAID";
+    public static final String SESSION_STATUS_EXPIRED = "EXPIRED";
+    public static final String SESSION_STATUS_CANCELLED = "CANCELLED";
+    /** Entitlement statuses (billing.entitlements). */
+    public static final String ENTITLEMENT_STATUS_ACTIVE = "ACTIVE";
+    public static final String ENTITLEMENT_STATUS_EXPIRED = "EXPIRED";
+    public static final String ENTITLEMENT_STATUS_PENDING_MANUAL = "PENDING_MANUAL";
+    /** Returned by GET /billing/entitlement/me when the user has no entitlement. */
+    public static final String ENTITLEMENT_STATUS_NONE = "NONE";
+    /** Webhook event type on the wire (both providers normalise to this). */
+    public static final String WEBHOOK_EVENT_CHECKOUT_COMPLETED = "CHECKOUT_COMPLETED";
+    /** Stripe event type that maps to CHECKOUT_COMPLETED. */
+    public static final String STRIPE_EVENT_CHECKOUT_SESSION_COMPLETED = "checkout.session.completed";
+    /** Stripe webhook signature header. */
+    public static final String STRIPE_SIGNATURE_HEADER = "Stripe-Signature";
+    /** Fake provider session ids look like fake_<uuid>. */
+    public static final String FAKE_SESSION_PREFIX = "fake_";
+    /** Stripe Checkout redirect targets (appended to app.public-url). */
+    public static final String SUCCESS_URL_SUFFIX =
+        "/plans?checkout=success&session_id={CHECKOUT_SESSION_ID}";
+    public static final String CANCEL_URL_SUFFIX = "/plans?checkout=cancelled";
+    /** JSON field names of the fake provider's webhook payload. */
+    public static final String WEBHOOK_FIELD_TYPE = "type";
+    public static final String WEBHOOK_FIELD_PROVIDER_SESSION_ID = "providerSessionId";
+    /** JSON path to the session id in a Stripe event payload: data.object.id. */
+    public static final String WEBHOOK_PAYLOAD_DATA = "data";
+    public static final String WEBHOOK_PAYLOAD_OBJECT = "object";
+    public static final String WEBHOOK_PAYLOAD_ID = "id";
+    private Billing() {}
+  }
+
   /** User-facing error messages (never include internals). */
   public static final class Errors {
     public static final String EMAIL_ALREADY_REGISTERED = "Email already registered";
@@ -196,6 +244,17 @@ public final class AppConstants {
     public static final String RESUME_NOT_FOUND = "Resume not found";
     public static final String RESUME_NOT_READY_CODE = "RESUME_NOT_READY";
     public static final String RESUME_NOT_READY = "Resume text is not ready yet";
+    public static final String BILLING_NOT_ENABLED = "Billing is not enabled";
+    public static final String PLAN_NOT_FOUND = "Plan not found";
+    public static final String ALREADY_ENTITLED_CODE = "ALREADY_ENTITLED";
+    public static final String ALREADY_ENTITLED = "You already have an active entitlement for this plan";
+    public static final String BILLING_NOT_CONFIGURED_CODE = "BILLING_NOT_CONFIGURED";
+    public static final String BILLING_NOT_CONFIGURED_MESSAGE =
+        "Billing is not connected yet — no payment is taken.";
+    public static final String BILLING_UNKNOWN_SESSION = "Unknown checkout session";
+    public static final String BILLING_BAD_SIGNATURE = "Invalid webhook signature";
+    public static final String BILLING_INVALID_WEBHOOK = "Invalid webhook payload";
+    public static final String BILLING_PROVIDER_ERROR = "Billing provider error — please try again";
     private Errors() {}
   }
 }

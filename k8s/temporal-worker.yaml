@@ -1,0 +1,88 @@
+# EpitomeJob W4 — temporal-worker (Temporal task-queue poller, no HTTP port).
+# W4-API-CONTRACT.md §2a/§4/§6: SAME image as agent-brain
+# (epitomejob/agent-brain:w4), command `python -m app.temporal.worker`,
+# TEMPORAL_ADDRESS + DB vars as in app/config.py. Polls task queue
+# `coach-queue`; liveness is visible in Temporal UI as queue pollers.
+#
+# NOTE — no Service for this Deployment, deliberately: contract §2a gives
+# temporal-worker NO ports ("—"), and a Kubernetes Service requires at least
+# one port. The contract §4 blanket line "one Service per service" cannot
+# apply to a service that listens on nothing. Nothing routes to this pod;
+# it only calls OUT to Temporal/Postgres.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: temporal-worker
+  namespace: epitomejob
+  labels:
+    app.kubernetes.io/name: epitomejob
+    app.kubernetes.io/component: temporal-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: temporal-worker
+  template:
+    metadata:
+      labels:
+        app: temporal-worker
+        app.kubernetes.io/name: epitomejob
+        app.kubernetes.io/component: temporal-worker
+    spec:
+      containers:
+        - name: temporal-worker
+          image: epitomejob/agent-brain:w4
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "app.temporal.worker"]
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: epitomejob-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql://epitomejob:$(POSTGRES_PASSWORD)@postgres:5432/epitomejob"
+            - name: TEMPORAL_ADDRESS
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: TEMPORAL_ADDRESS
+            - name: OLLAMA_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: OLLAMA_BASE_URL
+            - name: OLLAMA_CHAT_MODEL
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: OLLAMA_CHAT_MODEL
+            - name: OLLAMA_EMBED_MODEL
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: OLLAMA_EMBED_MODEL
+            - name: JAVA_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: JAVA_BASE_URL
+            - name: TEMPORAL_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: TEMPORAL_ENABLED
+            - name: LANGSMITH_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: LANGSMITH_ENABLED
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          # No probes: no HTTP endpoint (contract §2a — liveness is visible
+          # in Temporal UI as task-queue `coach-queue` pollers).

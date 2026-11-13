@@ -1,0 +1,111 @@
+# EpitomeJob W4 — postgres (pgvector).
+# W4-API-CONTRACT.md §2a/§4/§6: image pgvector/pgvector:pg16, port 5432.
+# The postgres-init ConfigMap (configmap.yaml) mounts the Temporal-database
+# init script so a FRESH volume gets `temporal` + `temporal_visibility`
+# automatically (contract §2a). Existing PVCs are untouched by it.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: epitomejob
+  labels:
+    app.kubernetes.io/name: epitomejob
+    app.kubernetes.io/component: postgres
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard # kind's default StorageClass
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: epitomejob
+  labels:
+    app.kubernetes.io/name: epitomejob
+    app.kubernetes.io/component: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        app.kubernetes.io/name: epitomejob
+        app.kubernetes.io/component: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg16
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: epitomejob-secrets
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "epitomejob", "-d", "epitomejob"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "epitomejob", "-d", "epitomejob"]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-data
+        - name: initdb
+          configMap:
+            name: postgres-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: epitomejob
+  labels:
+    app.kubernetes.io/name: epitomejob
+    app.kubernetes.io/component: postgres
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+      name: postgres

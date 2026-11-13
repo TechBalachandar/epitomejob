@@ -1,0 +1,128 @@
+# EpitomeJob W4 — backend (Spring Boot).
+# W4-API-CONTRACT.md §1/§2a/§4/§6: image epitomejob/backend:w4 built locally
+# from backend/Dockerfile (§2b), port 8080, health at /actuator/health.
+# Env names/values match §2a exactly; secrets come from epitomejob-secrets.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: epitomejob
+  labels:
+    app.kubernetes.io/name: epitomejob
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+        app.kubernetes.io/name: epitomejob
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: backend
+          image: epitomejob/backend:w4
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: SPRING_DATASOURCE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: SPRING_DATASOURCE_URL
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: SPRING_DATASOURCE_USERNAME
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: epitomejob-secrets
+                  key: POSTGRES_PASSWORD
+            - name: APP_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: epitomejob-secrets
+                  key: APP_JWT_SECRET
+            - name: MINIO_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: MINIO_ENDPOINT
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: epitomejob-secrets
+                  key: MINIO_SECRET_KEY
+            - name: AGENT_BRAIN_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: AGENT_BRAIN_URL
+            - name: BILLING_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: BILLING_ENABLED
+            - name: BILLING_PROVIDER
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: BILLING_PROVIDER
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: epitomejob-secrets
+                  key: STRIPE_SECRET_KEY
+            - name: STRIPE_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: epitomejob-secrets
+                  key: STRIPE_WEBHOOK_SECRET
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 90
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: epitomejob
+  labels:
+    app.kubernetes.io/name: epitomejob
+    app.kubernetes.io/component: backend
+spec:
+  type: ClusterIP
+  selector:
+    app: backend
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http

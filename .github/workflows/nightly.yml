@@ -1,9 +1,11 @@
 # EpitomeJob nightly QA — full suite, daily 6:00 AM ET (11:00 UTC).
 # Writes a qa-reports/<date>.md summary into the repo so the daily QA
 # agent (7:00 AM ET) can triage it and report at 7:05 AM ET.
-# The suite grows with the phases: Playwright E2E lands in W0/W2,
-# agent evals in W3, ZAP + k6 in W4. Until then, this runs everything
-# that exists: backend unit + API tests.
+# Five suites (W4 §5b): backend (Surefire + JaCoCo), agent-brain unit
+# tests, agent-brain evals (judge skips without Ollama), web unit
+# (Vitest), web E2E (Playwright). Each test job writes one
+# qa-counts-<suite>.txt artifact; the report job collects them and
+# writes the verdict. Evals/ZAP/k6 note: ZAP + k6 are not part of W4.
 name: Nightly QA
 
 on:
@@ -34,28 +36,282 @@ jobs:
         with:
           name: nightly-backend-surefire-reports
           path: backend/target/surefire-reports/
-      - name: Write QA report file
+      - name: Write backend counts
+        if: always()
+        run: |
+          if [ -d backend/target/surefire-reports ]; then
+            COUNTS=$(awk -F'[:,]' '/Tests run/{run+=$2; fail+=$4; err+=$6} END{print (run+0)" "(fail+0)" "(err+0)}' backend/target/surefire-reports/*.txt 2>/dev/null || echo "0 0 0")
+            set -- $COUNTS
+            echo "backend $1 $2 $3" > qa-counts-backend.txt
+            echo "Backend counts: $(cat qa-counts-backend.txt)"
+          else
+            echo "No surefire reports found — no count file written; the report job will mark backend missing"
+          fi
+      - name: Upload backend counts
+        if: always() && hashFiles('qa-counts-backend.txt') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-counts-backend
+          path: qa-counts-backend.txt
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-backend-jacoco-report
+          path: backend/target/site/jacoco/
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Nightly QA — backend" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tests: $(find backend/target/surefire-reports -name '*.txt' -exec grep -h 'Tests run' {} + | awk '{s+=$3; f+=$5; e+=$7} END {print s" run, "f" failures, "e" errors}')" >> "$GITHUB_STEP_SUMMARY"
+
+  python-nightly:
+    name: Agent-brain tests + evals
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install agent-brain dependencies
+        run: pip install -r agent-brain/requirements.txt
+      - name: Run agent-brain tests
+        run: python -m pytest agent-brain/tests -q --junitxml=pytest-tests.xml
+      - name: Write agent-brain test counts
+        if: always()
+        run: |
+          if [ -f pytest-tests.xml ]; then
+            # Sum tests/failures/errors/skipped over every <testsuite>
+            # in the JUnit XML. One line on purpose: a heredoc body
+            # would inherit the YAML block indent and Python rejects
+            # indented top-level statements.
+            COUNTS=$(python3 -c "import sys,xml.etree.ElementTree as ET;r=ET.parse(sys.argv[1]).getroot();print(*[sum(int(t.get(a,0)) for t in r.iter('testsuite')) for a in ('tests','failures','errors','skipped')])" pytest-tests.xml)
+            set -- $COUNTS
+            echo "python-tests $1 $2 $3" > qa-counts-python-tests.txt
+            echo "Agent-brain test counts: $(cat qa-counts-python-tests.txt)"
+          else
+            echo "No pytest-tests.xml found — no count file written; the report job will mark python-tests missing"
+          fi
+      - name: Upload agent-brain test counts
+        if: always() && hashFiles('qa-counts-python-tests.txt') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-counts-python-tests
+          path: qa-counts-python-tests.txt
+      - name: Run agent-brain evals
+        if: always()
+        run: python -m pytest agent-brain/evals -q --junitxml=pytest-evals.xml
+      - name: Write agent-brain eval counts
+        if: always()
+        run: |
+          if [ -f pytest-evals.xml ]; then
+            # Sum tests/failures/errors/skipped over every <testsuite>
+            # in the JUnit XML. One line on purpose: a heredoc body
+            # would inherit the YAML block indent and Python rejects
+            # indented top-level statements.
+            COUNTS=$(python3 -c "import sys,xml.etree.ElementTree as ET;r=ET.parse(sys.argv[1]).getroot();print(*[sum(int(t.get(a,0)) for t in r.iter('testsuite')) for a in ('tests','failures','errors','skipped')])" pytest-evals.xml)
+            set -- $COUNTS
+            echo "python-evals $1 $2 $3 skipped=$4" > qa-counts-python-evals.txt
+            echo "Agent-brain eval counts: $(cat qa-counts-python-evals.txt)"
+          else
+            echo "No pytest-evals.xml found — no count file written; the report job will mark python-evals missing"
+          fi
+      - name: Upload agent-brain eval counts
+        if: always() && hashFiles('qa-counts-python-evals.txt') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-counts-python-evals
+          path: qa-counts-python-evals.txt
+
+  web-nightly:
+    name: Web tests + E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Set up pnpm 10
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Install web dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        working-directory: web
+        run: pnpm exec tsc --noEmit
+      - name: Run web unit tests
+        if: always()
+        working-directory: web
+        run: pnpm exec vitest run --reporter=junit --outputFile=vitest-junit.xml
+      - name: Write web unit counts
+        if: always()
+        working-directory: web
+        run: |
+          if [ -f vitest-junit.xml ]; then
+            # Sum tests/failures/errors/skipped over every <testsuite>
+            # in the JUnit XML. One line on purpose: a heredoc body
+            # would inherit the YAML block indent and Python rejects
+            # indented top-level statements.
+            COUNTS=$(python3 -c "import sys,xml.etree.ElementTree as ET;r=ET.parse(sys.argv[1]).getroot();print(*[sum(int(t.get(a,0)) for t in r.iter('testsuite')) for a in ('tests','failures','errors','skipped')])" vitest-junit.xml)
+            set -- $COUNTS
+            echo "web-unit $1 $2 $3" > ../qa-counts-web-unit.txt
+            echo "Web unit counts: $(cat ../qa-counts-web-unit.txt)"
+          else
+            echo "No vitest-junit.xml found — no count file written; the report job will mark web-unit missing"
+          fi
+      - name: Upload web unit counts
+        if: always() && hashFiles('qa-counts-web-unit.txt') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-counts-web-unit
+          path: qa-counts-web-unit.txt
+      - name: Install Playwright Chromium
+        if: always()
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Run web E2E tests
+        if: always()
+        working-directory: web
+        env:
+          PLAYWRIGHT_JUNIT_OUTPUT_NAME: playwright-junit.xml
+        run: pnpm exec playwright test --reporter=junit
+      - name: Write web E2E counts
+        if: always()
+        working-directory: web
+        run: |
+          if [ -f playwright-junit.xml ]; then
+            # Sum tests/failures/errors/skipped over every <testsuite>
+            # in the JUnit XML. One line on purpose: a heredoc body
+            # would inherit the YAML block indent and Python rejects
+            # indented top-level statements.
+            COUNTS=$(python3 -c "import sys,xml.etree.ElementTree as ET;r=ET.parse(sys.argv[1]).getroot();print(*[sum(int(t.get(a,0)) for t in r.iter('testsuite')) for a in ('tests','failures','errors','skipped')])" playwright-junit.xml)
+            set -- $COUNTS
+            echo "web-e2e $1 $2 $3" > ../qa-counts-web-e2e.txt
+            echo "Web E2E counts: $(cat ../qa-counts-web-e2e.txt)"
+          else
+            echo "No playwright-junit.xml found — no count file written; the report job will mark web-e2e missing"
+          fi
+      - name: Upload web E2E counts
+        if: always() && hashFiles('qa-counts-web-e2e.txt') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-counts-web-e2e
+          path: qa-counts-web-e2e.txt
+
+  report:
+    name: Nightly QA report
+    needs: [backend-full, python-nightly, web-nightly]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download QA count artifacts
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: qa-counts-*
+          path: qa-counts
+          merge-multiple: true
+      - name: Download coverage artifact
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: nightly-backend-jacoco-report
+          path: jacoco-report
+      - name: Write QA report
         if: always()
         run: |
           mkdir -p qa-reports
           REPORT_DATE=$(TZ=America/New_York date +%F)
           REPORT="qa-reports/${REPORT_DATE}.md"
-          COUNTS=$(awk -F'[:,]' '/Tests run/{run+=$2; fail+=$4; err+=$6} END{print (run+0)" "(fail+0)" "(err+0)}' backend/target/surefire-reports/*.txt 2>/dev/null || echo "0 0 0")
-          COVERAGE=$(awk -F',' 'NR>1 {missed+=$8; covered+=$9} END {if (missed+covered>0) printf "%.1f%%", 100*covered/(missed+covered); else print "n/a"}' backend/target/site/jacoco/jacoco.csv 2>/dev/null || echo "n/a")
-          set -- $COUNTS
-          if [ "$1" = "0" ] && [ "$2" = "0" ] && [ "$3" = "0" ] && [ ! -d backend/target/surefire-reports ]; then
-            VERDICT="🔴 FAIL — no test reports found (build or test run did not produce output)"
-          elif [ "$2" = "0" ] && [ "$3" = "0" ]; then
-            VERDICT="🟢 PASS"
+          COVERAGE=$(awk -F',' 'NR>1 {missed+=$8; covered+=$9} END {if (missed+covered>0) printf "%.1f%%", 100*covered/(missed+covered); else print "n/a"}' jacoco-report/jacoco.csv 2>/dev/null || echo "n/a")
+
+          MISSING=""
+          FAILURES=0
+          ERRORS=0
+
+          # One line per suite: "<suite> <run> <failures> <errors>".
+          # python-evals also carries a trailing "skipped=<n>" token.
+          # A missing count file means that suite produced no results.
+          if [ -f qa-counts/qa-counts-backend.txt ]; then
+            set -- $(cat qa-counts/qa-counts-backend.txt)
+            B_RUN=${2:-0}; B_FAIL=${3:-0}; B_ERR=${4:-0}
+            FAILURES=$((FAILURES + B_FAIL)); ERRORS=$((ERRORS + B_ERR))
+            B_LINE="- Backend tests: $B_RUN run, $B_FAIL failures, $B_ERR errors"
           else
-            VERDICT="🔴 FAIL"
+            MISSING="$MISSING backend"
+            B_LINE="- Backend tests: no data (count file missing)"
           fi
+
+          if [ -f qa-counts/qa-counts-python-tests.txt ]; then
+            set -- $(cat qa-counts/qa-counts-python-tests.txt)
+            PT_RUN=${2:-0}; PT_FAIL=${3:-0}; PT_ERR=${4:-0}
+            FAILURES=$((FAILURES + PT_FAIL)); ERRORS=$((ERRORS + PT_ERR))
+            PT_LINE="- Python agent-brain tests: $PT_RUN run, $PT_FAIL failures, $PT_ERR errors"
+          else
+            MISSING="$MISSING python-tests"
+            PT_LINE="- Python agent-brain tests: no data (count file missing)"
+          fi
+
+          if [ -f qa-counts/qa-counts-python-evals.txt ]; then
+            set -- $(cat qa-counts/qa-counts-python-evals.txt)
+            PE_RUN=${2:-0}; PE_FAIL=${3:-0}; PE_ERR=${4:-0}
+            PE_SKIP=$(sed -n 's/.*skipped=\([0-9][0-9]*\).*/\1/p' qa-counts/qa-counts-python-evals.txt)
+            PE_SKIP=${PE_SKIP:-0}
+            FAILURES=$((FAILURES + PE_FAIL)); ERRORS=$((ERRORS + PE_ERR))
+            PE_LINE="- Python evals: $PE_RUN run, $PE_FAIL failures, $PE_SKIP skipped (judge skipped — no Ollama in CI)"
+          else
+            MISSING="$MISSING python-evals"
+            PE_LINE="- Python evals: no data (count file missing)"
+          fi
+
+          if [ -f qa-counts/qa-counts-web-unit.txt ]; then
+            set -- $(cat qa-counts/qa-counts-web-unit.txt)
+            WU_RUN=${2:-0}; WU_FAIL=${3:-0}; WU_ERR=${4:-0}
+            FAILURES=$((FAILURES + WU_FAIL)); ERRORS=$((ERRORS + WU_ERR))
+            WU_LINE="- Web unit tests: $WU_RUN run, $WU_FAIL failures, $WU_ERR errors"
+          else
+            MISSING="$MISSING web-unit"
+            WU_LINE="- Web unit tests: no data (count file missing)"
+          fi
+
+          if [ -f qa-counts/qa-counts-web-e2e.txt ]; then
+            set -- $(cat qa-counts/qa-counts-web-e2e.txt)
+            WE_RUN=${2:-0}; WE_FAIL=${3:-0}; WE_ERR=${4:-0}
+            FAILURES=$((FAILURES + WE_FAIL)); ERRORS=$((ERRORS + WE_ERR))
+            WE_LINE="- Web E2E tests: $WE_RUN run, $WE_FAIL failures, $WE_ERR errors"
+          else
+            MISSING="$MISSING web-e2e"
+            WE_LINE="- Web E2E tests: no data (count file missing)"
+          fi
+
+          MISSING=$(echo "$MISSING" | sed 's/^ //; s/ /, /g')
+          if [ -n "$MISSING" ]; then
+            VERDICT="🔴 FAIL — missing: $MISSING"
+          elif [ "$FAILURES" != "0" ] || [ "$ERRORS" != "0" ]; then
+            VERDICT="🔴 FAIL"
+          else
+            VERDICT="🟢 PASS"
+          fi
+
           {
             echo "# Nightly QA — ${REPORT_DATE}"
             echo ""
             echo "- Verdict: ${VERDICT}"
-            echo "- Backend tests: $1 run, $2 failures, $3 errors"
+            echo "$B_LINE"
             echo "- Coverage (lines): $COVERAGE (gate: 80% lines / 70% branches)"
+            echo "$PT_LINE"
+            echo "$PE_LINE"
+            echo "$WU_LINE"
+            echo "$WE_LINE"
             echo "- Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo "- Trigger: ${GITHUB_EVENT_NAME} at $(TZ=America/New_York date '+%H:%M %Z')"
             echo "- Commit: ${GITHUB_SHA}"
@@ -76,5 +332,9 @@ jobs:
       - name: Summary
         if: always()
         run: |
-          echo "## Nightly QA — backend" >> "$GITHUB_STEP_SUMMARY"
-          echo "Tests: $(find backend/target/surefire-reports -name '*.txt' -exec grep -h 'Tests run' {} + | awk '{s+=$3; f+=$5; e+=$7} END {print s" run, "f" failures, "e" errors}')" >> "$GITHUB_STEP_SUMMARY"
+          REPORT="qa-reports/$(TZ=America/New_York date +%F).md"
+          if [ -f "$REPORT" ]; then
+            cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No QA report was written" >> "$GITHUB_STEP_SUMMARY"
+          fi

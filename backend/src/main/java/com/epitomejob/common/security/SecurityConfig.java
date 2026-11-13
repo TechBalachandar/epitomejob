@@ -28,6 +28,8 @@ public class SecurityConfig {
         .authorizeHttpRequests(a -> a
             .requestMatchers("/auth/**", "/actuator/health",
                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+            // Stripe posts the webhook with no JWT — signature is verified in the handler.
+            .requestMatchers(org.springframework.http.HttpMethod.POST, "/billing/webhook").permitAll()
             .requestMatchers("/admin/**").hasRole("ADMIN")
             .anyRequest().authenticated())
         .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)

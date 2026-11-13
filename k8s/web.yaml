@@ -1,0 +1,73 @@
+# EpitomeJob W4 — web (Next.js, port 3000).
+# W4-API-CONTRACT.md §2a/§4/§6: image epitomejob/web:w4 built locally from
+# web/Dockerfile (§2b). BFF server-side base API_URL=http://backend:8080.
+# NEXT_PUBLIC_API_URL stays UNSET (BFF is same-origin). Health at /login.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: epitomejob
+  labels:
+    app.kubernetes.io/name: epitomejob
+    app.kubernetes.io/component: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+        app.kubernetes.io/name: epitomejob
+        app.kubernetes.io/component: web
+    spec:
+      containers:
+        - name: web
+          image: epitomejob/web:w4
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: API_URL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /login
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /login
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: epitomejob
+  labels:
+    app.kubernetes.io/name: epitomejob
+    app.kubernetes.io/component: web
+spec:
+  type: ClusterIP
+  selector:
+    app: web
+  ports:
+    - port: 3000
+      targetPort: 3000
+      name: http

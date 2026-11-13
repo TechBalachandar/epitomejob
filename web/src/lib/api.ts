@@ -9,7 +9,11 @@ import { useAuthStore } from "./auth-store";
 import type {
   Approval,
   AuthResponse,
+  BillingPlan,
+  BillingStatus,
+  CheckoutResult,
   CoachChatResponse,
+  Entitlement,
   Profile,
   ProfileUpdate,
   ResumeItem,
@@ -173,6 +177,32 @@ export async function sendCoachMessage(message: string): Promise<CoachChatRespon
     method: "POST",
     body: JSON.stringify({ message }),
   });
+}
+
+// --- W4: Billing (contract §1f) ------------------------------------------
+// Same-origin BFF calls through apiFetch, so the 401-refresh behaviour is
+// identical to every other BFF call. The plans page calls status first;
+// plans are only fetched when billing is enabled (the backend 404s on
+// /billing/plans while the flag is off).
+export async function fetchBillingStatus(): Promise<BillingStatus> {
+  return apiFetch<BillingStatus>("/billing/status");
+}
+
+export async function fetchBillingPlans(): Promise<BillingPlan[]> {
+  return apiFetch<BillingPlan[]>("/billing/plans");
+}
+
+export async function createBillingCheckout(
+  planCode: string,
+): Promise<CheckoutResult> {
+  return apiFetch<CheckoutResult>("/billing/checkout", {
+    method: "POST",
+    body: JSON.stringify({ planCode }),
+  });
+}
+
+export async function fetchMyEntitlement(): Promise<Entitlement> {
+  return apiFetch<Entitlement>("/billing/entitlement/me");
 }
 
 // --- Resumes ---------------------------------------------------------------

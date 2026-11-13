@@ -62,4 +62,22 @@ class GlobalExceptionHandlerTest {
     assertEquals("RESUME_NOT_READY", response.getBody().code());
     assertEquals("Resume text is not ready yet", response.getBody().message());
   }
+
+  @Test
+  void alreadyEntitledReturns409WithCode() {
+    var response = handler.handle(new AlreadyEntitledException());
+
+    assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+    assertEquals("ALREADY_ENTITLED", response.getBody().code());
+    assertEquals("You already have an active entitlement for this plan", response.getBody().message());
+  }
+
+  @Test
+  void billingNotConfiguredReturns503WithCodeAndMessage() {
+    var response = handler.handle(new BillingNotConfiguredException());
+
+    assertEquals(HttpStatus.SERVICE_UNAVAILABLE, response.getStatusCode());
+    assertEquals("BILLING_NOT_CONFIGURED", response.getBody().code());
+    assertEquals("Billing is not connected yet — no payment is taken.", response.getBody().message());
+  }
 }

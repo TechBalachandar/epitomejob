@@ -36,3 +36,45 @@ jobs:
         with:
           name: backend-jacoco-report
           path: backend/target/site/jacoco/
+  python:
+    name: Agent-brain tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install agent-brain dependencies
+        run: pip install -r agent-brain/requirements.txt
+      - name: Run agent-brain tests
+        run: python -m pytest agent-brain/tests -q
+
+  web:
+    name: Web tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Set up pnpm 10
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Install web dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        working-directory: web
+        run: pnpm exec tsc --noEmit
+      - name: Run web unit tests
+        working-directory: web
+        run: pnpm test
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Run web E2E tests
+        working-directory: web
+        run: pnpm test:e2e

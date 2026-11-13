@@ -1,0 +1,127 @@
+# EpitomeJob W4 — agent-brain (FastAPI, port 8000).
+# W4-API-CONTRACT.md §2a/§4/§6: image epitomejob/agent-brain:w4 built locally
+# from agent-brain/Dockerfile (§2b). Default CMD is uvicorn on :8000, so no
+# command override here. Health at GET /health.
+#
+# Env (verified against agent-brain/app/config.py, stack-worker correction
+# 2026-11-12): the config.py localhost defaults are WRONG inside a container —
+# JAVA_BASE_URL must be http://backend:8080 and DATABASE_URL must point at the
+# `postgres` Service. DATABASE_URL is built from $(POSTGRES_PASSWORD) so the
+# password stays in the Secret; POSTGRES_PASSWORD is declared BEFORE it in
+# this env list because kubelet expands $(VAR) only from earlier entries.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-brain
+  namespace: epitomejob
+  labels:
+    app.kubernetes.io/name: epitomejob
+    app.kubernetes.io/component: agent-brain
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-brain
+  template:
+    metadata:
+      labels:
+        app: agent-brain
+        app.kubernetes.io/name: epitomejob
+        app.kubernetes.io/component: agent-brain
+    spec:
+      containers:
+        - name: agent-brain
+          image: epitomejob/agent-brain:w4
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: epitomejob-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql://epitomejob:$(POSTGRES_PASSWORD)@postgres:5432/epitomejob"
+            - name: TEMPORAL_ADDRESS
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: TEMPORAL_ADDRESS
+            - name: OLLAMA_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: OLLAMA_BASE_URL
+            - name: OLLAMA_CHAT_MODEL
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: OLLAMA_CHAT_MODEL
+            - name: OLLAMA_EMBED_MODEL
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: OLLAMA_EMBED_MODEL
+            - name: JAVA_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: JAVA_BASE_URL
+            - name: AGENT_BRAIN_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: AGENT_BRAIN_PORT
+            - name: MCP_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: MCP_PORT
+            - name: TEMPORAL_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: TEMPORAL_ENABLED
+            - name: LANGSMITH_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: LANGSMITH_ENABLED
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-brain
+  namespace: epitomejob
+  labels:
+    app.kubernetes.io/name: epitomejob
+    app.kubernetes.io/component: agent-brain
+spec:
+  type: ClusterIP
+  selector:
+    app: agent-brain
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http

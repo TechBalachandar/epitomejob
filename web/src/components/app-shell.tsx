@@ -8,6 +8,7 @@ import {
   BookOpen,
   Briefcase,
   CalendarCheck,
+  CreditCard,
   FileText,
   Inbox,
   LayoutDashboard,
@@ -33,6 +34,7 @@ const NAV = [
   { href: "/approvals", label: "Approvals", icon: Inbox },
   { href: "/interviews", label: "Interviews", icon: CalendarCheck },
   { href: "/tracker", label: "Tracker", icon: Bell },
+  { href: "/plans", label: "Plans", icon: CreditCard },
   { href: "/learning", label: "Learning", icon: BookOpen },
 ];
 
