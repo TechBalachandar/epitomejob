@@ -20,7 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { signOut } from "@/lib/api";
+import { signOut, useUnreadCount } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { Button } from "./ui/button";
 
@@ -39,6 +39,32 @@ const NAV = [
 ];
 
 const PUBLIC_PATHS = ["/login", "/register"];
+
+/** M13 header bell: links to /notifications, badge from useUnreadCount
+ * (30s poll). Badge caps at 9+ and hides at 0; aria-label carries the
+ * count. Rendered only in the authenticated header, never on public
+ * paths. No NAV entry — the Tracker entry already uses the Bell icon. */
+function NotificationBell() {
+  const { data } = useUnreadCount();
+  const count = data?.unreadCount ?? 0;
+  return (
+    <Link
+      href="/notifications"
+      aria-label={count > 0 ? `Notifications, ${count} unread` : "Notifications"}
+      className="relative flex h-9 w-9 items-center justify-center rounded-md text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+    >
+      <Bell className="h-5 w-5" aria-hidden />
+      {count > 0 && (
+        <span
+          aria-hidden
+          className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-bold leading-none text-white"
+        >
+          {count > 9 ? "9+" : count}
+        </span>
+      )}
+    </Link>
+  );
+}
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
@@ -170,8 +196,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <span className="text-sm font-medium text-slate-700">
             AI Career Assistance
           </span>
-          <span className="ml-auto hidden rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 sm:inline">
-            W1 · Live backend
+          <span className="ml-auto flex items-center gap-1">
+            <NotificationBell />
+            <span className="hidden rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 sm:inline">
+              W1 · Live backend
+            </span>
           </span>
         </header>
         <main className="mx-auto w-full max-w-6xl flex-1 p-4 sm:p-6">

@@ -224,3 +224,28 @@ export interface Entitlement {
   status: "ACTIVE" | "EXPIRED" | "PENDING_MANUAL" | "NONE";
   expiresAt: string | null;
 }
+
+// --- M13: Notifications (in-app only, contract §2c) -----------------------
+
+export interface Notification {
+  id: string;
+  type: "APPROVAL_PROPOSED" | "INTERVIEW_CREATED" | "TRACKER_CHANGED" | "CLOCK_WARNING";
+  title: string;
+  body: string;
+  link: string;
+  isRead: boolean;
+  derived: boolean;
+  createdAt: string;
+}
+
+export interface NotificationPage {
+  content: Notification[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+export interface UnreadCount {
+  unreadCount: number;
+}

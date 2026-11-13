@@ -13,6 +13,7 @@ import com.epitomejob.interview.repository.InterviewSessionRepository;
 import com.epitomejob.interview.repository.QuestionRepository;
 import com.epitomejob.job.model.Job;
 import com.epitomejob.job.repository.JobRepository;
+import com.epitomejob.notification.service.NotificationService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,13 +39,16 @@ public class InterviewService {
   private final InterviewSessionRepository sessions;
   private final AnswerRepository answers;
   private final JobRepository jobs;
+  private final NotificationService notifications;
 
   public InterviewService(QuestionRepository questions, InterviewSessionRepository sessions,
-                          AnswerRepository answers, JobRepository jobs) {
+                          AnswerRepository answers, JobRepository jobs,
+                          NotificationService notifications) {
     this.questions = questions;
     this.sessions = sessions;
     this.answers = answers;
     this.jobs = jobs;
+    this.notifications = notifications;
   }
 
   @Transactional(readOnly = true)
@@ -57,9 +61,16 @@ public class InterviewService {
   @Transactional
   public SessionDto createSession(UUID jobId) {
     Job job = findJob(jobId);
+    List<Question> roleQuestions = roleQuestions(job.getRole());
     InterviewSession session = sessions.save(
         new InterviewSession(SecurityUtil.currentUserId(), jobId));
-    return SessionDto.from(session, job, roleQuestions(job.getRole()), List.of());
+    notifications.create(SecurityUtil.currentUserId(),
+        AppConstants.Notification.TYPE_INTERVIEW_CREATED,
+        AppConstants.Notification.INTERVIEW_TITLE,
+        String.format(AppConstants.Notification.INTERVIEW_BODY_FORMAT,
+            job.getTitle(), roleQuestions.size()),
+        AppConstants.Notification.LINK_INTERVIEWS);
+    return SessionDto.from(session, job, roleQuestions, List.of());
   }
 
   @Transactional

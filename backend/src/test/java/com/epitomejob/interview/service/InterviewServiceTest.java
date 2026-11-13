@@ -9,6 +9,7 @@ import com.epitomejob.interview.repository.InterviewSessionRepository;
 import com.epitomejob.interview.repository.QuestionRepository;
 import com.epitomejob.job.model.Job;
 import com.epitomejob.job.repository.JobRepository;
+import com.epitomejob.notification.service.NotificationService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,6 +28,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -44,6 +47,8 @@ class InterviewServiceTest {
   private AnswerRepository answers;
   @Mock
   private JobRepository jobs;
+  @Mock
+  private NotificationService notifications;
 
   @AfterEach
   void clearContext() {
@@ -56,7 +61,7 @@ class InterviewServiceTest {
   }
 
   private InterviewService service() {
-    return new InterviewService(questions, sessions, answers, jobs);
+    return new InterviewService(questions, sessions, answers, jobs, notifications);
   }
 
   private Job job() {
@@ -74,6 +79,24 @@ class InterviewServiceTest {
   /** n words of filler, optionally ending with a period. */
   private String words(int n) {
     return "word ".repeat(Math.max(0, n)).trim();
+  }
+
+  @Test
+  void createSessionCreatesInterviewCreatedNotification() {
+    authenticate();
+    when(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()));
+    when(questions.findByRoleOrderBySortOrderAsc("Backend"))
+        .thenReturn(List.of(question(1), question(2)));
+    when(sessions.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+    var dto = service().createSession(JOB_ID);
+
+    assertEquals("Senior Software Engineer, Backend (Java)", dto.jobTitle());
+    verify(notifications).create(eq(USER_ID), eq("INTERVIEW_CREATED"),
+        eq("Mock interview started"),
+        eq("Your mock interview for Senior Software Engineer, Backend (Java)"
+            + " is ready — 2 questions."),
+        eq("/interviews"));
   }
 
   @Test

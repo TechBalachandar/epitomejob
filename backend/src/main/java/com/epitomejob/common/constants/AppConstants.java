@@ -160,6 +160,44 @@ public final class AppConstants {
     private Interview() {}
   }
 
+  /** In-app notifications (M13): types, links, clock-warning bands, wording. */
+  public static final class Notification {
+    public static final String TYPE_APPROVAL_PROPOSED = "APPROVAL_PROPOSED";
+    public static final String TYPE_INTERVIEW_CREATED = "INTERVIEW_CREATED";
+    public static final String TYPE_TRACKER_CHANGED = "TRACKER_CHANGED";
+    public static final String TYPE_CLOCK_WARNING = "CLOCK_WARNING";
+    public static final String LINK_APPROVALS = "/approvals";
+    public static final String LINK_INTERVIEWS = "/interviews";
+    public static final String LINK_TRACKER = "/tracker";
+    public static final String LINK_PROFILE = "/profile";
+    /** H-1B grace period length, in days (mirrors the W5 web clock). */
+    public static final int CLOCK_TOTAL_DAYS = 60;
+    public static final int CLOCK_WARN_14_DAYS = 14;
+    public static final int CLOCK_WARN_7_DAYS = 7;
+    public static final String CLOCK_ID_14 = "clock-14";
+    public static final String CLOCK_ID_7 = "clock-7";
+    public static final String CLOCK_ID_0 = "clock-0";
+    public static final String CLOCK_ID_EXPIRED = "clock-expired";
+    public static final String APPROVAL_TITLE_PREFIX = "Approval proposed: ";
+    public static final String APPROVAL_BODY =
+        "Review it in your approvals inbox to approve or reject it.";
+    public static final String INTERVIEW_TITLE = "Mock interview started";
+    public static final String INTERVIEW_BODY_FORMAT =
+        "Your mock interview for %s is ready — %d questions.";
+    public static final String TRACKER_TITLE = "Application updated";
+    public static final String TRACKER_BODY_FORMAT = "%s moved to %s.";
+    public static final String CLOCK_TITLE_FORMAT = "H-1B clock: %d days left";
+    public static final String CLOCK_TITLE_ONE_DAY = "H-1B clock: 1 day left";
+    public static final String CLOCK_TITLE_LAST_DAY = "H-1B clock: last day";
+    public static final String CLOCK_TITLE_EXPIRED = "H-1B grace period ended";
+    public static final String CLOCK_BODY_FORMAT = "Your 60-day grace period ends on %s.";
+    public static final String CLOCK_BODY_LAST_DAY_FORMAT =
+        "Your 60-day grace period ends today (%s).";
+    public static final String CLOCK_BODY_EXPIRED_FORMAT =
+        "Your 60-day grace period ended on %s.";
+    private Notification() {}
+  }
+
   /** Coach proxy (M7, W3 contract §3): Java → agent-brain. */
   public static final class Coach {
     /** Agent-brain chat path (relative to app.agent-brain.url). */
@@ -225,6 +263,7 @@ public final class AppConstants {
     public static final String INVALID_CREDENTIALS = "Invalid credentials";
     public static final String INVALID_REFRESH_TOKEN = "Invalid refresh token";
     public static final String APPROVAL_NOT_FOUND = "Approval not found";
+    public static final String NOTIFICATION_NOT_FOUND = "Notification not found";
     public static final String APPROVAL_EXPIRED = "Approval expired — please re-propose";
     public static final String NO_FILE_UPLOADED = "No file uploaded";
     public static final String FILE_TOO_LARGE = "Max 10 MB";

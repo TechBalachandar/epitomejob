@@ -14,9 +14,12 @@ import type {
   CheckoutResult,
   CoachChatResponse,
   Entitlement,
+  Notification,
+  NotificationPage,
   Profile,
   ProfileUpdate,
   ResumeItem,
+  UnreadCount,
 } from "./types";
 
 import { buildJobsQuery } from "./jobs";
@@ -265,6 +268,57 @@ export function useDecideApproval() {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["approvals", "pending"] });
+    },
+  });
+}
+
+// --- M13: Notifications (contract §2b) ------------------------------------
+// Same-origin BFF calls through apiFetch, so the 401-refresh behaviour is
+// identical to every other BFF call. The bell polls the unread count every
+// 30s; the list itself is fetched on demand (no polling).
+
+export function useNotifications(page = 0, size = 20) {
+  return useQuery({
+    queryKey: ["notifications", page, size],
+    queryFn: () =>
+      apiFetch<NotificationPage>(`/notifications/me?page=${page}&size=${size}`),
+  });
+}
+
+export function useUnreadCount() {
+  return useQuery({
+    queryKey: ["notifications", "unread-count"],
+    queryFn: () => apiFetch<UnreadCount>("/notifications/unread-count"),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useMarkNotificationRead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<Notification>(`/notifications/${id}/read`, { method: "POST" }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["notifications", "unread-count"],
+      });
+    },
+  });
+}
+
+export function useMarkAllNotificationsRead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<{ readCount: number }>("/notifications/read-all", {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["notifications", "unread-count"],
+      });
     },
   });
 }

@@ -2,6 +2,7 @@ package com.epitomejob.tracker.service;
 
 import com.epitomejob.job.model.Job;
 import com.epitomejob.job.repository.JobRepository;
+import com.epitomejob.notification.service.NotificationService;
 import com.epitomejob.tracker.dto.TrackerDto;
 import com.epitomejob.tracker.model.TrackerEntry;
 import com.epitomejob.tracker.repository.TrackerRepository;
@@ -23,6 +24,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -36,6 +39,8 @@ class TrackerServiceTest {
   private TrackerRepository entries;
   @Mock
   private JobRepository jobs;
+  @Mock
+  private NotificationService notifications;
 
   @AfterEach
   void clearContext() {
@@ -48,7 +53,7 @@ class TrackerServiceTest {
   }
 
   private TrackerService service() {
-    return new TrackerService(entries, jobs);
+    return new TrackerService(entries, jobs, notifications);
   }
 
   private Job job() {
@@ -119,6 +124,51 @@ class TrackerServiceTest {
 
     assertEquals("APPLIED", dto.status());
     assertEquals("Spoke to recruiter", dto.notes());
+  }
+
+  @Test
+  void updateStatusChangeCreatesTrackerChangedNotification() {
+    authenticate();
+    TrackerEntry entry = new TrackerEntry(USER_ID, JOB_ID, null);
+    when(entries.findById(entry.getId())).thenReturn(Optional.of(entry));
+    when(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()));
+    when(entries.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+    TrackerDto dto = service().update(entry.getId(), "APPLIED", null);
+
+    assertEquals("APPLIED", dto.status());
+    verify(notifications).create(eq(USER_ID), eq("TRACKER_CHANGED"),
+        eq("Application updated"),
+        eq("Senior Software Engineer, Backend (Java) moved to Applied."),
+        eq("/tracker"));
+  }
+
+  @Test
+  void updateUnchangedStatusCreatesNoNotification() {
+    authenticate();
+    TrackerEntry entry = new TrackerEntry(USER_ID, JOB_ID, null);
+    entry.setStatus("APPLIED");
+    when(entries.findById(entry.getId())).thenReturn(Optional.of(entry));
+    when(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()));
+    when(entries.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+    service().update(entry.getId(), "APPLIED", null);
+
+    verify(notifications, never()).create(any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void updateNotesOnlyCreatesNoNotification() {
+    authenticate();
+    TrackerEntry entry = new TrackerEntry(USER_ID, JOB_ID, null);
+    when(entries.findById(entry.getId())).thenReturn(Optional.of(entry));
+    when(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()));
+    when(entries.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+    TrackerDto dto = service().update(entry.getId(), "SAVED", "Spoke to recruiter");
+
+    assertEquals("Spoke to recruiter", dto.notes());
+    verify(notifications, never()).create(any(), any(), any(), any(), any());
   }
 
   @Test

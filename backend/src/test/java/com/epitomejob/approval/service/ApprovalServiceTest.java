@@ -2,6 +2,7 @@ package com.epitomejob.approval.service;
 
 import com.epitomejob.approval.model.Approval;
 import com.epitomejob.approval.repository.ApprovalRepository;
+import com.epitomejob.notification.service.NotificationService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -36,6 +38,9 @@ class ApprovalServiceTest {
   @Mock
   private ApprovalRepository approvals;
 
+  @Mock
+  private NotificationService notifications;
+
   @AfterEach
   void clearContext() {
     SecurityContextHolder.clearContext();
@@ -47,7 +52,7 @@ class ApprovalServiceTest {
   }
 
   private ApprovalService service() {
-    return new ApprovalService(approvals);
+    return new ApprovalService(approvals, notifications);
   }
 
   private Approval pendingApproval() {
@@ -67,6 +72,30 @@ class ApprovalServiceTest {
     assertTrue(created.getExpiresAt().isAfter(Instant.now().plusSeconds(23 * 3600)),
         "approval must expire ~24h after proposal");
     assertTrue(created.getExpiresAt().isBefore(Instant.now().plusSeconds(25 * 3600)));
+  }
+
+  @Test
+  void proposeCreatesApprovalProposedNotification() {
+    authenticate();
+    when(approvals.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+    service().propose("APPLY_JOB", "{\"jobId\":\"job-1\"}");
+
+    verify(notifications).create(eq(USER_ID), eq("APPROVAL_PROPOSED"),
+        eq("Approval proposed: Apply for a job"),
+        eq("Review it in your approvals inbox to approve or reject it."),
+        eq("/approvals"));
+  }
+
+  @Test
+  void proposeUnknownActionUsesActionItselfAsLabel() {
+    authenticate();
+    when(approvals.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+    service().propose("SOMETHING_ELSE", "{}");
+
+    verify(notifications).create(eq(USER_ID), eq("APPROVAL_PROPOSED"),
+        eq("Approval proposed: SOMETHING_ELSE"), any(), any());
   }
 
   @Test
