@@ -22,6 +22,10 @@ export interface Profile {
   salaryMax: number | null;
   currency: string;
   visibility: string;
+  /** Profile skills, sorted alphabetically by the server, never null. */
+  skills: string[];
+  /** H-1B 60-day clock start date (ISO "YYYY-MM-DD"), null when unset. */
+  h1bClockStartDate: string | null;
   completeness: number;
   createdAt: string;
   updatedAt: string;
@@ -34,6 +38,10 @@ export interface ProfileUpdate {
   workType?: string;
   salaryMin?: number | null;
   salaryMax?: number | null;
+  skills?: string[];
+  h1bClockStartDate?: string | null;
+  visibility?: string;
+  currency?: string;
 }
 
 export type ResumeStatus = "PROCESSING" | "READY" | "FAILED";

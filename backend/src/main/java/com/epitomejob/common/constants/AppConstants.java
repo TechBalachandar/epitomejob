@@ -73,6 +73,8 @@ public final class AppConstants {
     public static final int COMPLETENESS_POINTS_PER_FIELD = 20;
     public static final String DEFAULT_CURRENCY = "USD";
     public static final String DEFAULT_VISIBILITY = "PRIVATE";
+    public static final String VISIBILITY_PUBLIC = "PUBLIC";
+    public static final String VISIBILITY_PRIVATE = "PRIVATE";
     private Profile() {}
   }
 
@@ -233,6 +235,7 @@ public final class AppConstants {
     public static final String TRACKER_NOT_FOUND = "Tracker entry not found";
     public static final String TRACKER_DUPLICATE = "Job already saved in tracker";
     public static final String INVALID_TRACKER_STATUS = "Invalid tracker status";
+    public static final String INVALID_VISIBILITY = "Invalid visibility";
     public static final String SESSION_NOT_FOUND = "Interview session not found";
     public static final String ANSWER_EMPTY = "Answer must not be empty";
     public static final String QUESTION_NOT_IN_SESSION = "Question is not part of this session";

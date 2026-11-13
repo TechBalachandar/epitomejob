@@ -186,6 +186,29 @@ class MatchingServiceTest {
   }
 
   @Test
+  void profileSkillRaisesScoreForMatchingJob() {
+    authenticate();
+    Job j = job(true, "Remote (US)", "Remote", 100000, 200000, List.of("LangGraph"));
+    when(jobs.findAll()).thenReturn(List.of(j));
+
+    Profile withoutSkill = profile("Reston, VA", "Remote", 100000, 200000);
+    stubCandidate(withoutSkill, null);
+    int scoreWithoutSkill = service().matchesForMe().get(0).score();
+
+    Profile withSkill = profile("Reston, VA", "Remote", 100000, 200000);
+    withSkill.setSkills(List.of("LangGraph"));
+    stubCandidate(withSkill, null);
+    int scoreWithSkill = service().matchesForMe().get(0).score();
+
+    // skills 0 + location 10 + work type 10 + salary 15 + sponsorship 15 = 50
+    assertEquals(50, scoreWithoutSkill);
+    // skills 50 + location 10 + work type 10 + salary 15 + sponsorship 15 = 100
+    assertEquals(100, scoreWithSkill);
+    assertTrue(scoreWithSkill > scoreWithoutSkill,
+        "adding a matching profile skill must raise the score, all else equal");
+  }
+
+  @Test
   void matchForJobMissingJobIs404() {
     authenticate();
     UUID jobId = UUID.randomUUID();

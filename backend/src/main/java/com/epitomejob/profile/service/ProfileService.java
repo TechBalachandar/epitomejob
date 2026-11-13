@@ -1,13 +1,17 @@
 package com.epitomejob.profile.service;
 
+import com.epitomejob.common.constants.AppConstants;
 import com.epitomejob.common.util.SecurityUtil;
 import com.epitomejob.profile.dto.ProfileResponse;
 import com.epitomejob.profile.dto.ProfileUpdateRequest;
 import com.epitomejob.profile.model.Profile;
 import com.epitomejob.profile.repository.ProfileRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -22,6 +26,12 @@ public class ProfileService {
   @Transactional
   public ProfileResponse upsertMe(ProfileUpdateRequest incoming) {
     UUID userId = SecurityUtil.currentUserId();
+    if (incoming.visibility() != null
+        && !AppConstants.Profile.VISIBILITY_PUBLIC.equals(incoming.visibility())
+        && !AppConstants.Profile.VISIBILITY_PRIVATE.equals(incoming.visibility())) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+          AppConstants.Errors.INVALID_VISIBILITY);
+    }
     Profile profile = profiles.findByUserId(userId).orElseGet(() -> new Profile(userId));
     if (incoming.headline() != null) profile.setHeadline(incoming.headline());
     if (incoming.summary() != null) profile.setSummary(incoming.summary());
@@ -29,6 +39,17 @@ public class ProfileService {
     if (incoming.workType() != null) profile.setWorkType(incoming.workType());
     if (incoming.salaryMin() != null) profile.setSalaryMin(incoming.salaryMin());
     if (incoming.salaryMax() != null) profile.setSalaryMax(incoming.salaryMax());
+    if (incoming.skills() != null) {
+      profile.setSkills(incoming.skills().stream()
+          .filter(Objects::nonNull)
+          .map(String::trim)
+          .filter(s -> !s.isEmpty())
+          .distinct()
+          .toList());
+    }
+    if (incoming.h1bClockStartDate() != null) profile.setH1bClockStartDate(incoming.h1bClockStartDate());
+    if (incoming.currency() != null) profile.setCurrency(incoming.currency());
+    if (incoming.visibility() != null) profile.setVisibility(incoming.visibility());
     profile.setCompleteness(profile.computeCompleteness());
     profile.touch();
     return ProfileResponse.from(profiles.save(profile));

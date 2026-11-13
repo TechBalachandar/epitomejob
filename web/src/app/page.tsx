@@ -1,53 +1,124 @@
 "use client";
 
 import Link from "next/link";
-import { useProfile } from "@/lib/api";
-import { MOCK_ACTIVITY } from "@/lib/mock-data";
+import {
+  useInterviewSessions,
+  useMatches,
+  usePendingApprovals,
+  useProfile,
+  useResumes,
+  useTracker,
+} from "@/lib/api";
+import { clockStatus, formatDeadline } from "@/lib/h1b-clock";
+import {
+  activeTrackerCount,
+  deriveNextSteps,
+  deriveRecentActivity,
+  formatActivityDate,
+  topMatch,
+} from "@/lib/dashboard";
 import { CompletenessMeter } from "@/components/completeness-meter";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { ArrowRight, Briefcase, CalendarCheck, FileText, Sparkles } from "lucide-react";
+import { ArrowRight, Briefcase, CalendarCheck, FileText, Hourglass, Sparkles } from "lucide-react";
 
-const STATS = [
-  { label: "Resumes", value: "1", icon: FileText, href: "/resumes" },
-  { label: "Matches", value: "4", icon: Sparkles, href: "/matches" },
-  { label: "Applications", value: "5", icon: Briefcase, href: "/tracker" },
-  { label: "Interviews", value: "1 upcoming", icon: CalendarCheck, href: "/interviews" },
-];
-
-const NEXT_STEPS = [
-  { text: "Finish your profile — headline and salary range are still blank.", href: "/profile" },
-  { text: "Review your 92% match: Agentic AI Engineer at Meridian Care.", href: "/matches" },
-  { text: "2 approvals are waiting for your decision.", href: "/approvals" },
-  { text: "Run a 5-question mock interview before Friday.", href: "/interviews" },
-];
+function greetingFor(now: Date): string {
+  const hour = now.getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
 
 export default function DashboardPage() {
-  const { data: profile } = useProfile();
-  const completeness = profile?.completeness ?? 80;
+  const { data: profile, isLoading: profileLoading } = useProfile();
+  const { data: resumes, isLoading: resumesLoading } = useResumes();
+  const { data: matches, isLoading: matchesLoading } = useMatches();
+  const { data: tracker, isLoading: trackerLoading } = useTracker();
+  const { data: approvals, isLoading: approvalsLoading } = usePendingApprovals();
+  const { data: sessions, isLoading: sessionsLoading } = useInterviewSessions();
+
+  const top = topMatch(matches);
+  const nextSteps = deriveNextSteps({
+    resumes,
+    profile,
+    pendingApprovals: approvals,
+    matches,
+  });
+  const activity = deriveRecentActivity({
+    tracker,
+    approvals,
+    resumes,
+  });
+  const clock = clockStatus(profile?.h1bClockStartDate ?? null);
+  const topMatches = [...(matches ?? [])]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+
+  const stats = [
+    {
+      label: "Resumes",
+      value: resumesLoading ? null : String(resumes?.length ?? 0),
+      sub: null as string | null,
+      icon: FileText,
+      href: "/resumes",
+    },
+    {
+      label: "Matches",
+      value: matchesLoading ? null : String(matches?.length ?? 0),
+      sub: top ? `Top score ${top.score}%` : null,
+      icon: Sparkles,
+      href: "/matches",
+    },
+    {
+      label: "Active applications",
+      value: trackerLoading ? null : String(activeTrackerCount(tracker)),
+      sub: null,
+      icon: Briefcase,
+      href: "/tracker",
+    },
+    {
+      label: "Pending approvals",
+      value: approvalsLoading ? null : String(approvals?.length ?? 0),
+      sub: null,
+      icon: Hourglass,
+      href: "/approvals",
+    },
+    {
+      label: "Interview sessions",
+      value: sessionsLoading ? null : String(sessions?.length ?? 0),
+      sub: null,
+      icon: CalendarCheck,
+      href: "/interviews",
+    },
+  ];
 
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Good morning, Dev</h1>
+        <h1 className="text-2xl font-bold text-slate-900">{greetingFor(new Date())}</h1>
         <p className="mt-1 text-sm text-slate-500">
           Here is where your job search stands today.
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {STATS.map(({ label, value, icon: Icon, href }) => (
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {stats.map(({ label, value, sub, icon: Icon, href }) => (
           <Link key={label} href={href}>
             <Card className="transition-shadow hover:shadow-md">
               <CardContent className="flex items-center gap-3 pt-5">
-                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
                   <Icon className="h-5 w-5" aria-hidden />
                 </span>
-                <span>
-                  <span className="block text-xl font-bold text-slate-900">{value}</span>
+                <span className="min-w-0">
+                  <span className="block text-xl font-bold text-slate-900">
+                    {value ?? "—"}
+                  </span>
                   <span className="block text-xs text-slate-500">{label}</span>
+                  {sub && (
+                    <span className="block truncate text-xs text-slate-400">{sub}</span>
+                  )}
                 </span>
               </CardContent>
             </Card>
@@ -64,11 +135,20 @@ export default function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <CompletenessMeter value={completeness} />
-            <p className="text-sm text-slate-600">
-              {profile?.headline ??
-                "Senior Software Engineer — Java, Spring Boot, Agentic AI"}
-            </p>
+            {profileLoading ? (
+              <p className="text-sm text-slate-500">Loading profile…</p>
+            ) : profile ? (
+              <>
+                <CompletenessMeter value={profile.completeness} />
+                <p className="text-sm text-slate-600">
+                  {profile.headline || "Add a headline so matching knows what you do."}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-slate-600">
+                No profile yet — set one up to start matching.
+              </p>
+            )}
             <Link
               href="/profile"
               className={cn(buttonVariants({ variant: "outline" }), "w-fit")}
@@ -78,22 +158,81 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card
+          className={cn(
+            clock.state === "urgent" &&
+              "border-amber-400 bg-amber-50",
+            clock.state === "expired" && "border-rose-400 bg-rose-50",
+          )}
+        >
           <CardHeader>
             <CardTitle>60-day clock</CardTitle>
             <CardDescription>H-1B grace period tracker</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <p className="text-3xl font-bold text-slate-900">
-              60 <span className="text-base font-medium text-slate-500">days left</span>
-            </p>
-            <p className="text-sm text-slate-600">
-              Widget shell only in W0 — the real countdown, deadline, and
-              sponsor-aware matching land with the H-1B wedge in W2.
-            </p>
-            <Badge variant="secondary" className="w-fit">
-              Coming in W2
-            </Badge>
+            {clock.state === "not-set" && (
+              <>
+                <p className="text-3xl font-bold text-slate-900">
+                  Not set
+                </p>
+                <p className="text-sm text-slate-600">
+                  Set your H-1B clock start date to start the 60-day
+                  countdown.
+                </p>
+                <Link
+                  href="/profile"
+                  className={cn(buttonVariants({ variant: "outline" }), "w-fit")}
+                >
+                  Set your clock start date <ArrowRight className="h-4 w-4" aria-hidden />
+                </Link>
+              </>
+            )}
+            {clock.state === "active" && clock.daysLeft !== null && clock.deadline && (
+              <>
+                <p className="text-3xl font-bold text-slate-900">
+                  {clock.daysLeft}{" "}
+                  <span className="text-base font-medium text-slate-500">days left</span>
+                </p>
+                <p className="text-sm text-slate-600">
+                  Deadline {formatDeadline(clock.deadline)}
+                </p>
+                <Badge variant="secondary" className="w-fit">
+                  Active
+                </Badge>
+              </>
+            )}
+            {clock.state === "urgent" && clock.daysLeft !== null && clock.deadline && (
+              <>
+                <p className="text-3xl font-bold text-amber-800">
+                  {clock.daysLeft}{" "}
+                  <span className="text-base font-medium text-amber-700">
+                    {clock.daysLeft === 0 ? "day left — last day" : "days left"}
+                  </span>
+                </p>
+                <p className="text-sm text-amber-800">
+                  Deadline {formatDeadline(clock.deadline)} — your 60-day
+                  grace period is almost up.
+                </p>
+                <Badge className="w-fit bg-amber-600 hover:bg-amber-600">
+                  Urgent
+                </Badge>
+              </>
+            )}
+            {clock.state === "expired" && clock.deadline && (
+              <>
+                <p className="text-3xl font-bold text-rose-700">Expired</p>
+                <p className="text-sm text-rose-700">
+                  Your 60-day clock ended {formatDeadline(clock.deadline)}.
+                  Update the start date on your profile if it changed.
+                </p>
+                <Link
+                  href="/profile"
+                  className={cn(buttonVariants({ variant: "outline" }), "w-fit")}
+                >
+                  Update the date <ArrowRight className="h-4 w-4" aria-hidden />
+                </Link>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -104,19 +243,25 @@ export default function DashboardPage() {
             <CardTitle>Next steps</CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="flex flex-col gap-3">
-              {NEXT_STEPS.map((step) => (
-                <li key={step.text}>
-                  <Link
-                    href={step.href}
-                    className="flex items-start gap-2 text-sm text-slate-700 hover:text-indigo-700"
-                  >
-                    <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" aria-hidden />
-                    {step.text}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            {nextSteps.length === 0 ? (
+              <p className="text-sm text-slate-600">
+                You&apos;re all caught up — nothing needs your attention right now.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-3">
+                {nextSteps.map((step) => (
+                  <li key={step.text}>
+                    <Link
+                      href={step.href}
+                      className="flex items-start gap-2 text-sm text-slate-700 hover:text-indigo-700"
+                    >
+                      <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" aria-hidden />
+                      {step.text}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
 
@@ -125,17 +270,70 @@ export default function DashboardPage() {
             <CardTitle>Recent activity</CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="flex flex-col gap-3">
-              {MOCK_ACTIVITY.map((a) => (
-                <li key={a.id} className="flex flex-col gap-0.5 border-b border-slate-100 pb-3 last:border-0 last:pb-0">
-                  <span className="text-sm text-slate-700">{a.text}</span>
-                  <span className="text-xs text-slate-400">{a.at}</span>
-                </li>
-              ))}
-            </ul>
+            {activity.length === 0 ? (
+              <p className="text-sm text-slate-600">
+                No activity yet — upload a resume or save a job to get started.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-3">
+                {activity.map((a) => (
+                  <li key={a.id} className="flex flex-col gap-0.5 border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+                    <span className="text-sm text-slate-700">{a.text}</span>
+                    <span className="text-xs text-slate-400">{formatActivityDate(a.at)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Top matches</CardTitle>
+          <CardDescription>
+            Your best matches right now, by score.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {topMatches.length === 0 ? (
+            <p className="text-sm text-slate-600">
+              No matches yet — complete your profile and upload a resume to
+              start matching.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-4">
+              {topMatches.map((match) => (
+                <li key={match.job.id}>
+                  <Link href="/matches" className="group flex flex-col gap-1.5">
+                    <span className="flex items-baseline justify-between gap-2">
+                      <span className="text-sm font-medium text-slate-900 group-hover:text-indigo-700">
+                        {match.job.title} · {match.job.company}
+                      </span>
+                      <span className="shrink-0 text-sm font-semibold text-slate-900">
+                        {match.score}%
+                      </span>
+                    </span>
+                    <span
+                      className="h-2 w-full overflow-hidden rounded-full bg-slate-200"
+                      role="progressbar"
+                      aria-valuenow={match.score}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={`Match score for ${match.job.title}`}
+                    >
+                      <span
+                        className="block h-full rounded-full bg-indigo-600"
+                        style={{ width: `${match.score}%` }}
+                      />
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

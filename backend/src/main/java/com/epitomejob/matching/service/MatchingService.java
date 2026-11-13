@@ -27,9 +27,10 @@ import java.util.UUID;
  * location 10, work type 10, salary 15, sponsorship 15.
  *
  * Candidate text = latest READY resume parsedText (else "") + profile
- * headline + profile summary, normalized (lowercase, collapsed whitespace).
- * A job skill matches if its normalized full string is a substring of the
- * candidate text, or its first whitespace-separated token is.
+ * headline + profile summary + profile skills, normalized (lowercase,
+ * collapsed whitespace). A job skill matches if its normalized full string
+ * is a substring of the candidate text, or its first whitespace-separated
+ * token is.
  */
 @Service
 public class MatchingService {
@@ -154,7 +155,8 @@ public class MatchingService {
         ? AppConstants.Matching.SOURCE_RESUME : AppConstants.Matching.SOURCE_PROFILE;
     String text = normalize(resumeText) + " "
         + normalize(profile.map(Profile::getHeadline).orElse(null)) + " "
-        + normalize(profile.map(Profile::getSummary).orElse(null));
+        + normalize(profile.map(Profile::getSummary).orElse(null)) + " "
+        + normalize(profile.map(p -> String.join(" ", p.getSkills())).orElse(null));
     return new Candidate(profile.orElse(null), normalize(text), source);
   }
 
