@@ -21,4 +21,4 @@ WORKDIR /app
 # Dockerfile valid if the version is bumped.
 COPY --from=build /app/target/*.jar app.jar
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-Dnetworkaddress.cache.ttl=5", "-jar", "app.jar"]

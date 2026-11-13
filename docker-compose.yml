@@ -82,7 +82,7 @@ services:
     ports:
       - "7233:7233"
     environment:
-      DB: postgresql
+      DB: postgres12
       DB_PORT: "5432"
       POSTGRES_USER: epitomejob
       POSTGRES_PWD: ${POSTGRES_PASSWORD:-epitomejob-dev}
@@ -132,7 +132,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/epitomejob
       SPRING_DATASOURCE_USERNAME: epitomejob
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-epitomejob-dev}
-      APP_JWT_SECRET: ${APP_JWT_SECRET:-dev-only-secret-change-me}
+      APP_JWT_SECRET: ${APP_JWT_SECRET:-dev-only-secret-change-me-0123456789abcdef}
       MINIO_ENDPOINT: http://rustfs:9000
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin-dev

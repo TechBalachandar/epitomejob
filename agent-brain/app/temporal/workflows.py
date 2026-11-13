@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
+from typing import Any
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -29,7 +30,7 @@ class CoachChatInput:
 @workflow.defn
 class CoachWorkflow:
     @workflow.run
-    async def run(self, input: CoachChatInput) -> dict[str, object]:
+    async def run(self, input: CoachChatInput) -> dict[str, Any]:
         retry = RetryPolicy(maximum_attempts=3)
         await workflow.execute_activity(
             index_resume_if_needed,

@@ -9,6 +9,7 @@ the token is passed in the workflow input, never stored.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from temporalio import activity
 
@@ -36,7 +37,7 @@ def _deps(token: str) -> CoachDeps:
 
 
 @activity.defn
-async def run_supervisor_graph(input: dict[str, object]) -> dict[str, object]:
+async def run_supervisor_graph(input: dict[str, str]) -> dict[str, Any]:
     deps = _deps(str(input["token"]))
     try:
         return await run_coach(
@@ -48,7 +49,7 @@ async def run_supervisor_graph(input: dict[str, object]) -> dict[str, object]:
 
 
 @activity.defn
-async def index_resume_if_needed(input: dict[str, object]) -> dict[str, int]:
+async def index_resume_if_needed(input: dict[str, str]) -> dict[str, int]:
     deps = _deps(str(input["token"]))
     try:
         return await index_jobs_and_resume(deps.java, deps.store, deps.llm)
