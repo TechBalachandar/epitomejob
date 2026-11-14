@@ -7,9 +7,8 @@ import type { TrackerDto, TrackerStatus } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Trash2 } from "lucide-react";
+import { GripVertical, Trash2 } from "lucide-react";
 
 const COLUMNS: { status: TrackerStatus; label: string }[] = [
   { status: "SAVED", label: "Saved" },
@@ -41,6 +40,8 @@ export default function TrackerPage() {
   const remove = useDeleteTracker();
   const [notesDraft, setNotesDraft] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Set<string>>(new Set());
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<TrackerStatus | null>(null);
 
   async function move(card: TrackerDto, status: TrackerStatus) {
     if (status === card.status) return;
@@ -49,6 +50,26 @@ export default function TrackerPage() {
     } catch (err) {
       toast({ title: "Could not move", description: err instanceof ApiError ? err.message : "Try again.", variant: "error" });
     }
+  }
+
+  function handleDragStart(e: React.DragEvent, card: TrackerDto) {
+    e.dataTransfer.setData("text/plain", card.id);
+    e.dataTransfer.effectAllowed = "move";
+    setDraggedId(card.id);
+  }
+
+  function handleDragEnd() {
+    setDraggedId(null);
+    setDropTarget(null);
+  }
+
+  function handleDrop(e: React.DragEvent, status: TrackerStatus) {
+    e.preventDefault();
+    const id = e.dataTransfer.getData("text/plain");
+    setDropTarget(null);
+    setDraggedId(null);
+    const card = (cards ?? []).find((c) => c.id === id);
+    if (card) void move(card, status);
   }
 
   async function saveNotes(card: TrackerDto) {
@@ -79,8 +100,8 @@ export default function TrackerPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Tracker</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Your applications across the pipeline. Move a card with its status
-          menu, edit its notes, or remove it.
+          Your applications across the pipeline. Drag cards between columns
+          to move them, edit their notes, or remove them.
         </p>
       </div>
 
@@ -94,8 +115,30 @@ export default function TrackerPage() {
       <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-5">
         {COLUMNS.map(({ status, label }) => {
           const columnCards = (cards ?? []).filter((c) => c.status === status);
+          const isDropTarget = dropTarget === status;
           return (
-            <div key={status} className="flex flex-col gap-3 rounded-xl bg-slate-100 p-3">
+            <div
+              key={status}
+              role="list"
+              data-testid={`tracker-column-${status}`}
+              aria-label={`${label} column, drop cards here to move them`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                setDropTarget(status);
+              }}
+              onDragLeave={(e) => {
+                // Only clear when the pointer truly leaves the column, not
+                // when it moves between children inside it.
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                  setDropTarget((t) => (t === status ? null : t));
+                }
+              }}
+              onDrop={(e) => handleDrop(e, status)}
+              className={`flex flex-col gap-3 rounded-xl p-3 transition-colors ${
+                isDropTarget ? "bg-indigo-50 ring-2 ring-indigo-500" : "bg-slate-100"
+              }`}
+            >
               <div className="flex items-center justify-between px-1">
                 <h2 className="text-sm font-semibold text-slate-700">{label}</h2>
                 <Badge variant="secondary">{columnCards.length}</Badge>
@@ -105,11 +148,29 @@ export default function TrackerPage() {
               )}
               {columnCards.map((card) => {
                 const isEditing = editing.has(card.id);
+                const isDragging = draggedId === card.id;
                 return (
-                  <Card key={card.id}>
+                  <Card
+                    key={card.id}
+                    role="listitem"
+                    data-testid={`tracker-card-${card.id}`}
+                    draggable
+                    aria-label={`${card.title} in ${label} column. Drag to move to another column.`}
+                    onDragStart={(e) => handleDragStart(e, card)}
+                    onDragEnd={handleDragEnd}
+                    className={isDragging ? "cursor-grabbing opacity-50" : "cursor-grab"}
+                  >
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm leading-snug">{card.title}</CardTitle>
-                      <p className="text-xs text-slate-500">{card.company}</p>
+                      <div className="flex items-start gap-1">
+                        <GripVertical
+                          className="mt-0.5 h-4 w-4 shrink-0 text-slate-400"
+                          aria-hidden
+                        />
+                        <div className="min-w-0">
+                          <CardTitle className="text-sm leading-snug">{card.title}</CardTitle>
+                          <p className="text-xs text-slate-500">{card.company}</p>
+                        </div>
+                      </div>
                     </CardHeader>
                     <CardContent className="flex flex-col gap-2 pt-0">
                       <Badge variant={STATUS_BADGE[card.status]} className="w-fit">
@@ -163,22 +224,6 @@ export default function TrackerPage() {
                           </Button>
                         </>
                       )}
-                      <label className="sr-only" htmlFor={`move-${card.id}`}>
-                        Move {card.title} to
-                      </label>
-                      <Select
-                        id={`move-${card.id}`}
-                        value={card.status}
-                        disabled={update.isPending}
-                        onChange={(e) => void move(card, e.target.value as TrackerStatus)}
-                        aria-label={`Move ${card.title} to another column`}
-                      >
-                        {COLUMNS.map((col) => (
-                          <option key={col.status} value={col.status}>
-                            Move to {col.label}
-                          </option>
-                        ))}
-                      </Select>
                       <Button
                         size="sm"
                         variant="outline"

@@ -530,13 +530,14 @@ test.describe("W1 smoke", () => {
     await expect(page.getByText("Matched on your profile — no resume yet").first()).toBeVisible();
   });
 
-  test("W2 tracker: status move via the menu", async ({ page }) => {
+  test("W2 tracker: status move via drag and drop", async ({ page }) => {
     await login(page);
     await gotoViaNav(page, "Tracker");
     await expect(page.getByText("Agentic AI Engineer").first()).toBeVisible();
-    await page
-      .getByLabel("Move Agentic AI Engineer to another column")
-      .selectOption("APPLIED");
+    await page.dragAndDrop(
+      '[data-testid="tracker-card-trk-1"]',
+      '[data-testid="tracker-column-APPLIED"]',
+    );
     await expect(page.getByText("Agentic AI Engineer").first()).toBeVisible();
     // The card now sits in the Applied column (2 Applied cards would mean a dup).
     const appliedColumn = page.locator("div.rounded-xl", { has: page.getByRole("heading", { name: "Applied", exact: true }) });
