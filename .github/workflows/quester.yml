@@ -11,6 +11,12 @@
 #   - green push to main -> close any open Quester failure issues.
 # No secret is required for the test runs themselves. Board writes are the
 # only step that needs a secret, and they are skipped gracefully without it.
+# TRIAGE NEVER FAILS THE RUN: triage is reporting only, so every `gh` call
+# below is guarded (a failure prints a warning instead of aborting the step
+# under bash -e) and the triage job has continue-on-error. A reporting
+# failure must never turn a green run red — that is what happened on run #2
+# (2026-11-14, commit f76bb892): all five suites passed, but the triage job
+# failed and the run went red. Fix 2026-11-14: hardened triage (this file).
 #
 # Base verified 2026-11-14: main @ 3855e76; ci.yml (3 jobs: backend,
 # python agent-brain tests, web unit+E2E) and nightly.yml (5 suites +
@@ -146,6 +152,9 @@ jobs:
     needs: [backend, python-tests, python-evals, web-unit, web-e2e]
     if: always()
     runs-on: ubuntu-latest
+    # Triage is reporting only: the suites already ran, so a failure here
+    # (e.g. a transient gh API error) must never turn a green run red.
+    continue-on-error: true
     permissions:
       contents: read
       issues: write
@@ -210,8 +219,11 @@ jobs:
           # One issue per failing commit: if an open qa-agent issue already
           # carries this SHA in its title, comment on it instead of filing
           # a duplicate.
+          # Guarded: a gh API failure here must not abort the step (bash -e).
+          # stderr is NOT silenced: if gh fails, its error stays in the log
+          # so the cause is visible on the next run (run #2/#3 failed here).
           EXISTING=$(gh issue list --label qa-agent --state open --limit 100 \
-            --json number,title --jq ".[] | select(.title | contains(\"${SHORT_SHA}\")) | .number" | head -n 1)
+            --json number,title --jq ".[] | select(.title | contains(\"${SHORT_SHA}\")) | .number" | head -n 1 || true)
           BODY_FILE=$(mktemp)
           cat > "${BODY_FILE}" <<EOF
           ## Quester CI failure
@@ -231,7 +243,7 @@ jobs:
               cat "${BODY_FILE}"
             } > "${BODY_FILE}.comment"
             gh issue comment "${EXISTING}" --body-file "${BODY_FILE}.comment" || echo "::warning::Could not comment on issue #${EXISTING} (fork PRs have a read-only token)."
-            ISSUE_URL=$(gh issue view "${EXISTING}" --json url --jq .url)
+            ISSUE_URL=$(gh issue view "${EXISTING}" --json url --jq .url || echo "")
           else
             echo "Creating new issue: ${TITLE}"
             ISSUE_URL=$(gh issue create --title "${TITLE}" --label qa-agent \
@@ -267,16 +279,23 @@ jobs:
         run: |
           # Only a green push to main closes failure issues. A green PR run
           # closes nothing: it proves the branch, not main.
+          # Guarded: a gh API failure here must not abort the step (bash -e).
+          # stderr is NOT silenced: if gh fails, its error stays in the log
+          # so the cause is visible on the next run (run #2/#3 failed here).
           NUMBERS=$(gh issue list --label qa-agent --state open --limit 100 \
-            --json number,title --jq '.[] | select(.title | startswith("[Quester] CI failure")) | .number')
+            --json number,title --jq '.[] | select(.title | startswith("[Quester] CI failure")) | .number' || true)
           if [ -z "${NUMBERS}" ]; then
             echo "No open Quester failure issues."
             exit 0
           fi
           for N in ${NUMBERS}; do
-            gh issue comment "$N" --body "Quester run is green on main: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} (commit ${GITHUB_SHA}). Closing this failure issue."
-            gh issue close "$N" --reason completed
-            echo "Closed #${N}"
+            gh issue comment "$N" --body "Quester run is green on main: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} (commit ${GITHUB_SHA}). Closing this failure issue." \
+              || echo "::warning::Could not comment on issue #${N}."
+            if gh issue close "$N" --reason completed; then
+              echo "Closed #${N}"
+            else
+              echo "::warning::Could not close issue #${N}."
+            fi
           done
 
       - name: Summary
