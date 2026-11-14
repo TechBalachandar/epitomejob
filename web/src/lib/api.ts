@@ -221,11 +221,34 @@ export function useResumes(enabled = true) {
 export function useUploadResume() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (file: File) => {
+    mutationFn: (input: File | { file: File; label?: string }) => {
+      const file = input instanceof File ? input : input.file;
+      const label = input instanceof File ? undefined : input.label?.trim();
       const form = new FormData();
       form.append("file", file);
+      // W6: optional multipart label; empty = omitted (backend: null).
+      if (label) form.append("label", label);
       return apiFetch<ResumeItem>("/resumes", { method: "POST", body: form });
     },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["resumes", "me"] });
+    },
+  });
+}
+
+/** W6: rename a resume's label — PUT /resumes/{id} {label} (1–80 chars). */
+export async function renameResume(id: string, label: string): Promise<ResumeItem> {
+  return apiFetch<ResumeItem>(`/resumes/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify({ label }),
+  });
+}
+
+export function useRenameResume() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; label: string }) =>
+      renameResume(input.id, input.label),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["resumes", "me"] });
     },
@@ -330,6 +353,8 @@ export interface JobFilters {
   location?: string;
   workType?: string;
   sponsorsH1b?: boolean;
+  /** W6: exact source filter (LINKEDIN / INDEED / MONSTER / NAUKRI / COMPANY / SEED). */
+  source?: string;
   page?: number;
   size?: number;
 }
@@ -351,18 +376,25 @@ export function useJob(id: string | null) {
 }
 
 // --- W2: Matches ------------------------------------------------------------
+// W6: resumeId selects which resume the matches are scored against.
+// No resumeId = the backend's latest READY resume (unchanged behaviour).
+export async function fetchMatches(resumeId?: string | null): Promise<Match[]> {
+  const suffix = resumeId ? `?resumeId=${encodeURIComponent(resumeId)}` : "";
+  return apiFetch<Match[]>(`/matches/me${suffix}`);
+}
 
-export function useMatches() {
+export function useMatches(resumeId?: string | null) {
   return useQuery({
-    queryKey: ["matches", "me"],
-    queryFn: () => apiFetch<Match[]>("/matches/me"),
+    queryKey: ["matches", "me", resumeId ?? "latest"],
+    queryFn: () => fetchMatches(resumeId),
   });
 }
 
-export function useMatch(jobId: string | null) {
+export function useMatch(jobId: string | null, resumeId?: string | null) {
+  const suffix = resumeId ? `?resumeId=${encodeURIComponent(resumeId)}` : "";
   return useQuery({
-    queryKey: ["matches", jobId],
-    queryFn: () => apiFetch<Match>(`/matches/${jobId}`),
+    queryKey: ["matches", jobId, resumeId ?? "latest"],
+    queryFn: () => apiFetch<Match>(`/matches/${jobId}${suffix}`),
     enabled: !!jobId,
   });
 }
@@ -448,15 +480,19 @@ export function useDeleteTracker() {
 //    whose payload carries {jobId, resumeId, trackerId}. Nothing is sent
 //    until the user approves it in the Approvals inbox; on approval the
 //    approvals page flips the tracker entry to APPLIED.
-export async function applyForJob(jobId: string): Promise<Approval> {
-  const resumes = await apiFetch<ResumeItem[]>("/resumes/me");
-  const resumeId = resumes.find((r) => r.status === "READY")?.id ?? null;
-  const entry = await saveJob(jobId, resumeId);
+export async function applyForJob(jobId: string, resumeId?: string | null): Promise<Approval> {
+  // W6: an explicitly selected resume wins; otherwise the first READY one.
+  let selectedResumeId = resumeId ?? null;
+  if (!selectedResumeId) {
+    const resumes = await apiFetch<ResumeItem[]>("/resumes/me");
+    selectedResumeId = resumes.find((r) => r.status === "READY")?.id ?? null;
+  }
+  const entry = await saveJob(jobId, selectedResumeId);
   return apiFetch<Approval>("/approvals", {
     method: "POST",
     body: JSON.stringify({
       action: "APPLY_JOB",
-      payload: JSON.stringify({ jobId, resumeId, trackerId: entry.id }),
+      payload: JSON.stringify({ jobId, resumeId: selectedResumeId, trackerId: entry.id }),
     }),
   });
 }
@@ -464,7 +500,10 @@ export async function applyForJob(jobId: string): Promise<Approval> {
 export function useApplyJob() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (jobId: string) => applyForJob(jobId),
+    mutationFn: (input: string | { jobId: string; resumeId?: string | null }) =>
+      typeof input === "string"
+        ? applyForJob(input)
+        : applyForJob(input.jobId, input.resumeId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["tracker", "me"] });
       void queryClient.invalidateQueries({ queryKey: ["approvals", "pending"] });

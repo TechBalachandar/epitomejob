@@ -1,6 +1,7 @@
 package com.epitomejob.matching.service;
 
 import com.epitomejob.common.constants.AppConstants;
+import com.epitomejob.common.exception.ResumeNotReadyException;
 import com.epitomejob.job.dto.JobDto;
 import com.epitomejob.job.model.Job;
 import com.epitomejob.job.repository.JobRepository;
@@ -28,7 +29,9 @@ import java.util.UUID;
  *
  * Candidate text = latest READY resume parsedText (else "") + profile
  * headline + profile summary + profile skills, normalized (lowercase,
- * collapsed whitespace). A job skill matches if its normalized full string
+ * collapsed whitespace). With a resumeId (W6 contract §2c) THAT resume's
+ * parsedText is used instead of the latest READY one. A job skill matches
+ * if its normalized full string
  * is a substring of the candidate text, or its first whitespace-separated
  * token is.
  */
@@ -46,9 +49,9 @@ public class MatchingService {
   }
 
   @Transactional(readOnly = true)
-  public List<MatchDto> matchesForMe() {
+  public List<MatchDto> matchesForMe(UUID resumeId) {
     UUID userId = SecurityUtil.currentUserId();
-    Candidate candidate = loadCandidate(userId);
+    Candidate candidate = loadCandidate(userId, resumeId);
     return jobs.findAll().stream()
         .map(job -> score(job, candidate))
         .sorted(Comparator.comparingInt(MatchDto::score).reversed())
@@ -57,12 +60,12 @@ public class MatchingService {
   }
 
   @Transactional(readOnly = true)
-  public MatchDto matchForJob(UUID jobId) {
+  public MatchDto matchForJob(UUID jobId, UUID resumeId) {
     UUID userId = SecurityUtil.currentUserId();
     Job job = jobs.findById(jobId)
         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
             AppConstants.Errors.JOB_NOT_FOUND));
-    return score(job, loadCandidate(userId));
+    return score(job, loadCandidate(userId, resumeId));
   }
 
   /** Scores one job. Package-visible so unit tests can drive it directly. */
@@ -145,11 +148,30 @@ public class MatchingService {
     return new MatchDto(JobDto.from(job), total, reasons, gaps, candidate.source());
   }
 
-  private Candidate loadCandidate(UUID userId) {
+  /**
+   * Loads the candidate for a user (W6 contract §2c). With {@code resumeId}
+   * null the latest READY resume is used (unchanged behaviour); with a
+   * resumeId THAT resume is used — not found or not owned is a 404, not
+   * READY is a 400 {@code RESUME_NOT_READY}. Package-visible so unit tests
+   * can drive it directly, like {@link #score}.
+   */
+  Candidate loadCandidate(UUID userId, UUID resumeId) {
     Optional<Profile> profile = profiles.findByUserId(userId);
-    Optional<Resume> resume = resumes.findByUserIdOrderByCreatedAtDesc(userId).stream()
-        .filter(r -> AppConstants.Resume.STATUS_READY.equals(r.getStatus()))
-        .findFirst();
+    Optional<Resume> resume;
+    if (resumeId != null) {
+      Resume chosen = resumes.findById(resumeId)
+          .filter(r -> r.getUserId().equals(userId))
+          .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+              AppConstants.Errors.RESUME_NOT_FOUND));
+      if (!AppConstants.Resume.STATUS_READY.equals(chosen.getStatus())) {
+        throw new ResumeNotReadyException();
+      }
+      resume = Optional.of(chosen);
+    } else {
+      resume = resumes.findByUserIdOrderByCreatedAtDesc(userId).stream()
+          .filter(r -> AppConstants.Resume.STATUS_READY.equals(r.getStatus()))
+          .findFirst();
+    }
     String resumeText = resume.map(Resume::getParsedText).orElse("");
     String source = resume.isPresent()
         ? AppConstants.Matching.SOURCE_RESUME : AppConstants.Matching.SOURCE_PROFILE;

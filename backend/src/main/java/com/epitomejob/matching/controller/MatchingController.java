@@ -5,6 +5,7 @@ import com.epitomejob.matching.service.MatchingService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -21,12 +22,13 @@ public class MatchingController {
   }
 
   @GetMapping("/me")
-  public List<MatchDto> matchesForMe() {
-    return service.matchesForMe();
+  public List<MatchDto> matchesForMe(@RequestParam(required = false) UUID resumeId) {
+    return service.matchesForMe(resumeId);
   }
 
   @GetMapping("/{jobId}")
-  public MatchDto matchForJob(@PathVariable UUID jobId) {
-    return service.matchForJob(jobId);
+  public MatchDto matchForJob(@PathVariable UUID jobId,
+                              @RequestParam(required = false) UUID resumeId) {
+    return service.matchForJob(jobId, resumeId);
   }
 }

@@ -1,16 +1,21 @@
 "use client";
 
-import { useState } from "react";
-import { ApiError, useApplyJob, useMatches, useSaveJob } from "@/lib/api";
+import { Suspense, useState } from "react";
+import { ApiError, useApplyJob, useMatches, useResumes, useSaveJob } from "@/lib/api";
+import { useSelectedResumeId } from "@/lib/use-selected-resume";
 import { matchSourceLabel } from "@/lib/jobs";
 import { toast } from "@/lib/toast-store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { JobSource } from "@/components/job-source";
+import { ResumeSelector } from "@/components/resume-selector";
 import { CheckCircle2, CircleAlert, Save } from "lucide-react";
 
-export default function MatchesPage() {
-  const { data: matches, isLoading, isError } = useMatches();
+function MatchesPageContent() {
+  const { data: resumes } = useResumes();
+  const { selectedResumeId, setSelectedResumeId } = useSelectedResumeId(resumes);
+  const { data: matches, isLoading, isError, error } = useMatches(selectedResumeId);
   const sorted = [...(matches ?? [])].sort((a, b) => b.score - a.score);
   const applyJob = useApplyJob();
   const saveJob = useSaveJob();
@@ -19,7 +24,7 @@ export default function MatchesPage() {
 
   async function handleSave(jobId: string, title: string) {
     try {
-      await saveJob.mutateAsync({ jobId });
+      await saveJob.mutateAsync({ jobId, resumeId: selectedResumeId });
       setSaved((s) => new Set(s).add(jobId));
       toast({ title: "Saved", description: `${title} added to your tracker.`, variant: "success" });
     } catch (err) {
@@ -29,7 +34,7 @@ export default function MatchesPage() {
 
   async function handleApply(jobId: string) {
     try {
-      await applyJob.mutateAsync(jobId);
+      await applyJob.mutateAsync({ jobId, resumeId: selectedResumeId });
       setApplied((s) => new Set(s).add(jobId));
       toast({
         title: "Approval requested",
@@ -55,13 +60,23 @@ export default function MatchesPage() {
         </p>
       </div>
 
+      {(resumes?.length ?? 0) > 0 && (
+        <ResumeSelector
+          resumes={resumes ?? []}
+          value={selectedResumeId}
+          onChange={setSelectedResumeId}
+        />
+      )}
+
       {isLoading && <p className="text-sm text-slate-500">Loading matches…</p>}
       {isError && (
         <p role="alert" className="text-sm text-rose-600">
-          Could not load matches. Make sure you are signed in and the backend is running.
+          {error instanceof ApiError && error.status === 400
+            ? "That resume is not ready yet — pick a READY resume above."
+            : "Could not load matches. Make sure you are signed in and the backend is running."}
         </p>
       )}
-      {!isLoading && sorted.length === 0 && (
+      {!isLoading && !isError && sorted.length === 0 && (
         <p className="text-sm text-slate-500">
           No matches yet. Upload a resume or complete your profile to get matched.
         </p>
@@ -76,7 +91,7 @@ export default function MatchesPage() {
             <Card key={job.id}>
               <CardHeader>
                 <div className="flex items-start justify-between gap-3">
-                  <div>
+                  <div className="min-w-0">
                     <CardTitle>{job.title}</CardTitle>
                     <CardDescription className="mt-1">
                       {job.company} · {job.location} · {job.workType}
@@ -87,9 +102,12 @@ export default function MatchesPage() {
                     <span className="text-[11px] font-medium text-indigo-600">match</span>
                   </span>
                 </div>
-                <Badge variant="secondary" className="mt-2 w-fit">
-                  {matchSourceLabel(match.source)}
-                </Badge>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary" className="w-fit">
+                    {matchSourceLabel(match.source)}
+                  </Badge>
+                  <JobSource job={job} />
+                </div>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
                 <div>
@@ -140,5 +158,15 @@ export default function MatchesPage() {
         })}
       </div>
     </div>
+  );
+}
+
+// useSearchParams() needs a Suspense boundary so the page still
+// prerenders (Next.js CSR bailout rule for search params).
+export default function MatchesPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-slate-500">Loading matches…</p>}>
+      <MatchesPageContent />
+    </Suspense>
   );
 }

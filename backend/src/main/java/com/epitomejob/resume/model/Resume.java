@@ -25,6 +25,11 @@ public class Resume {
   @Column(nullable = false)
   private String fileName;
 
+  /** Human label, e.g. "Android Developer" (W6 contract §2b). Nullable in the
+   * DB; the API falls back to the file name (see ResumeResponse). */
+  @Column(length = 80)
+  private String label;
+
   @Column(nullable = false)
   private String fileType;
 
@@ -54,6 +59,8 @@ public class Resume {
   public UUID getUserId() { return userId; }
   public String getBlobPath() { return blobPath; }
   public String getFileName() { return fileName; }
+  public String getLabel() { return label; }
+  public void setLabel(String l) { this.label = l; }
   public String getFileType() { return fileType; }
   public int getFileSize() { return fileSize; }
   public String getStatus() { return status; }

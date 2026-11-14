@@ -23,7 +23,9 @@ public record ProfileResponse(
     LocalDate h1bClockStartDate,
     int completeness,
     Instant createdAt,
-    Instant updatedAt) {
+    Instant updatedAt,
+    String linkedinUrl,
+    String workAuthorization) {
 
   public static ProfileResponse from(Profile p) {
     List<String> skills = p.getSkills() == null ? List.of()
@@ -31,6 +33,7 @@ public record ProfileResponse(
     return new ProfileResponse(p.getId(), p.getUserId(), p.getHeadline(), p.getSummary(),
         p.getLocation(), p.getWorkType(), p.getSalaryMin(), p.getSalaryMax(),
         p.getCurrency(), p.getVisibility(), skills, p.getH1bClockStartDate(),
-        p.getCompleteness(), p.getCreatedAt(), p.getUpdatedAt());
+        p.getCompleteness(), p.getCreatedAt(), p.getUpdatedAt(),
+        p.getLinkedinUrl(), p.getWorkAuthorization());
   }
 }

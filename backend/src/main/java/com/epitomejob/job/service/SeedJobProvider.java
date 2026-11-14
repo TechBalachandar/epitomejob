@@ -22,12 +22,13 @@ public class SeedJobProvider implements JobProvider {
   @Override
   @Transactional(readOnly = true)
   public Page<Job> search(String query, String location, String workType,
-                          Boolean sponsorsH1b, Pageable pageable) {
+                          Boolean sponsorsH1b, String source, Pageable pageable) {
     List<Job> filtered = jobs.findAll().stream()
         .filter(job -> matchesQuery(job, query))
         .filter(job -> matchesLocation(job, location))
         .filter(job -> matchesWorkType(job, workType))
         .filter(job -> matchesSponsorship(job, sponsorsH1b))
+        .filter(job -> matchesSource(job, source))
         .sorted(Comparator.comparing(Job::getPostedAt,
             Comparator.nullsLast(Comparator.naturalOrder())).reversed())
         .toList();
@@ -58,6 +59,11 @@ public class SeedJobProvider implements JobProvider {
 
   private boolean matchesSponsorship(Job job, Boolean sponsorsH1b) {
     return sponsorsH1b == null || job.isSponsorsH1b() == sponsorsH1b;
+  }
+
+  private boolean matchesSource(Job job, String source) {
+    return source == null || source.isBlank()
+        || (job.getSource() != null && job.getSource().equalsIgnoreCase(source));
   }
 
   private boolean contains(String haystack, String needle) {

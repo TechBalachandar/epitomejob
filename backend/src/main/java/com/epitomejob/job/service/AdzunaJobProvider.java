@@ -33,7 +33,9 @@ public class AdzunaJobProvider implements JobProvider {
 
   @Override
   public Page<Job> search(String query, String location, String workType,
-                          Boolean sponsorsH1b, Pageable pageable) {
+                          Boolean sponsorsH1b, String source, Pageable pageable) {
+    // The source filter is ignored: live Adzuna calls are out of scope, so
+    // this stub never returns jobs for any filter combination.
     List<String> missing = new ArrayList<>();
     if (isMissing(env.apply(ENV_APP_ID))) {
       missing.add(ENV_APP_ID);

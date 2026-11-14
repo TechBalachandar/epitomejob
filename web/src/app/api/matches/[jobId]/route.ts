@@ -7,5 +7,6 @@ export async function GET(
   { params }: { params: Promise<{ jobId: string }> },
 ): Promise<Response> {
   const { jobId } = await params;
-  return proxyJson(req, `/matches/${encodeURIComponent(jobId)}`);
+  // W6: ?resumeId= passes through so the match is scored per resume.
+  return proxyJson(req, `/matches/${encodeURIComponent(jobId)}${req.nextUrl.search}`);
 }

@@ -65,6 +65,8 @@ public final class AppConstants {
     public static final String PDF_CONTENT_TYPE = "application/pdf";
     public static final long MAX_FILE_SIZE_BYTES = 10L * 1024 * 1024;
     public static final int MAX_PARSED_TEXT_CHARS = 20_000;
+    /** Resume label (W6 contract §2b): optional, trimmed, 1–80 chars. */
+    public static final int MAX_LABEL_LENGTH = 80;
     private Resume() {}
   }
 
@@ -75,6 +77,17 @@ public final class AppConstants {
     public static final String DEFAULT_VISIBILITY = "PRIVATE";
     public static final String VISIBILITY_PUBLIC = "PUBLIC";
     public static final String VISIBILITY_PRIVATE = "PRIVATE";
+    /** LinkedIn URL (W6 contract §2e): max 300 chars, must start with http(s). */
+    public static final int MAX_LINKEDIN_URL_LENGTH = 300;
+    /** Work authorisation values (W6 contract §2e). */
+    public static final String WORK_AUTH_US_CITIZEN = "US_CITIZEN";
+    public static final String WORK_AUTH_GREEN_CARD = "GREEN_CARD";
+    public static final String WORK_AUTH_EAD = "EAD";
+    public static final String WORK_AUTH_H1B = "H1B";
+    public static final String WORK_AUTH_OTHER = "OTHER";
+    public static final java.util.List<String> WORK_AUTHORIZATIONS = java.util.List.of(
+        WORK_AUTH_US_CITIZEN, WORK_AUTH_GREEN_CARD, WORK_AUTH_EAD, WORK_AUTH_H1B,
+        WORK_AUTH_OTHER);
     private Profile() {}
   }
 
@@ -94,6 +107,16 @@ public final class AppConstants {
     public static final int MAX_PAGE_SIZE = 50;
     /** Skills / keywords are stored as one TEXT column, comma-separated. */
     public static final String SKILLS_SEPARATOR = ",";
+    /** Job sources (W6 contract §2d): where the posting was aggregated from. */
+    public static final String SOURCE_LINKEDIN = "LINKEDIN";
+    public static final String SOURCE_INDEED = "INDEED";
+    public static final String SOURCE_MONSTER = "MONSTER";
+    public static final String SOURCE_NAUKRI = "NAUKRI";
+    public static final String SOURCE_COMPANY = "COMPANY";
+    public static final String SOURCE_SEED = "SEED";
+    public static final java.util.List<String> SOURCES = java.util.List.of(
+        SOURCE_LINKEDIN, SOURCE_INDEED, SOURCE_MONSTER, SOURCE_NAUKRI,
+        SOURCE_COMPANY, SOURCE_SEED);
     private Job() {}
   }
 
@@ -275,6 +298,13 @@ public final class AppConstants {
     public static final String TRACKER_DUPLICATE = "Job already saved in tracker";
     public static final String INVALID_TRACKER_STATUS = "Invalid tracker status";
     public static final String INVALID_VISIBILITY = "Invalid visibility";
+    public static final String INVALID_LINKEDIN_URL =
+        "LinkedIn URL must start with http:// or https://";
+    public static final String INVALID_WORK_AUTHORIZATION = "Invalid work authorization";
+    public static final String INVALID_RESUME_LABEL = "Label must be 1–80 characters";
+    public static final String INVALID_JOB_SOURCE = "Invalid job source";
+    public static final String INVALID_JOB_SOURCE_URL =
+        "Source URL must start with http:// or https://";
     public static final String SESSION_NOT_FOUND = "Interview session not found";
     public static final String ANSWER_EMPTY = "Answer must not be empty";
     public static final String QUESTION_NOT_IN_SESSION = "Question is not part of this session";

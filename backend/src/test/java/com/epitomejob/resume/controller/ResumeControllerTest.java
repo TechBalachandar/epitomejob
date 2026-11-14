@@ -11,19 +11,24 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -58,7 +63,7 @@ class ResumeControllerTest {
   @Test
   void uploadReturns201WithMetadataOnly() throws Exception {
     authenticate();
-    when(service.upload(any())).thenReturn(resume());
+    when(service.upload(any(MultipartFile.class), any())).thenReturn(resume());
     var file = new MockMultipartFile("file", "resume.pdf", "application/pdf", "fake-pdf".getBytes());
 
     mockMvc.perform(multipart("/resumes").file(file)
@@ -66,8 +71,94 @@ class ResumeControllerTest {
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.fileName").value("resume.pdf"))
         .andExpect(jsonPath("$.status").value("READY"))
+        .andExpect(jsonPath("$.label").value("resume.pdf"))
         .andExpect(jsonPath("$.blobPath").doesNotExist())
         .andExpect(jsonPath("$.parsedText").doesNotExist());
+  }
+
+  @Test
+  void uploadWithLabelReturnsLabel() throws Exception {
+    authenticate();
+    Resume labelled = resume();
+    labelled.setLabel("Android Developer");
+    when(service.upload(any(MultipartFile.class), eq("Android Developer"))).thenReturn(labelled);
+    var file = new MockMultipartFile("file", "resume.pdf", "application/pdf", "fake-pdf".getBytes());
+
+    mockMvc.perform(multipart("/resumes").file(file).param("label", "Android Developer")
+            .header("Authorization", "Bearer test-token"))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.label").value("Android Developer"));
+
+    verify(service).upload(any(MultipartFile.class), eq("Android Developer"));
+  }
+
+  @Test
+  void listMineReturnsLabels() throws Exception {
+    authenticate();
+    Resume labelled = resume();
+    labelled.setLabel("Android Developer");
+    when(service.listMine()).thenReturn(List.of(labelled));
+
+    mockMvc.perform(get("/resumes/me").header("Authorization", "Bearer test-token"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].fileName").value("resume.pdf"))
+        .andExpect(jsonPath("$[0].label").value("Android Developer"));
+  }
+
+  @Test
+  void renameLabelReturnsUpdatedResume() throws Exception {
+    authenticate();
+    Resume renamed = resume();
+    renamed.setLabel("Java Backend");
+    when(service.renameLabel(eq(renamed.getId()), eq("Java Backend"))).thenReturn(renamed);
+
+    mockMvc.perform(put("/resumes/" + renamed.getId())
+            .header("Authorization", "Bearer test-token")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {"label":"Java Backend"}"""))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.label").value("Java Backend"));
+  }
+
+  @Test
+  void renameLabelMissingIs404() throws Exception {
+    authenticate();
+    UUID id = UUID.randomUUID();
+    when(service.renameLabel(eq(id), any())).thenThrow(
+        new ResponseStatusException(HttpStatus.NOT_FOUND, "Resume not found"));
+
+    mockMvc.perform(put("/resumes/" + id)
+            .header("Authorization", "Bearer test-token")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {"label":"Java Backend"}"""))
+        .andExpect(status().isNotFound());
+  }
+
+  @Test
+  void renameLabelBlankIs400() throws Exception {
+    authenticate();
+    // @Valid rejects a blank label before the service is ever called: no stub.
+    mockMvc.perform(put("/resumes/" + UUID.randomUUID())
+            .header("Authorization", "Bearer test-token")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {"label":"   "}"""))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+  }
+
+  @Test
+  void renameLabelTooLongIs400() throws Exception {
+    authenticate();
+    // @Valid rejects an over-80 label before the service is ever called: no stub.
+    mockMvc.perform(put("/resumes/" + UUID.randomUUID())
+            .header("Authorization", "Bearer test-token")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"label\":\"" + "x".repeat(81) + "\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
   }
 
   @Test

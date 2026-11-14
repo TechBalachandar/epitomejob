@@ -1,7 +1,10 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
+import { useQueries } from "@tanstack/react-query";
 import {
+  fetchMatches,
   useInterviewSessions,
   useMatches,
   usePendingApprovals,
@@ -9,6 +12,11 @@ import {
   useResumes,
   useTracker,
 } from "@/lib/api";
+import { matchesHref, useSelectedResumeId } from "@/lib/use-selected-resume";
+import { topMatchScoreForResume } from "@/lib/resume-selection";
+import { ResumeSelector } from "@/components/resume-selector";
+import { JobSource } from "@/components/job-source";
+import type { Match, ResumeItem } from "@/lib/types";
 import { clockStatus, formatDeadline } from "@/lib/h1b-clock";
 import {
   activeTrackerCount,
@@ -31,21 +39,64 @@ function greetingFor(now: Date): string {
   return "Good evening";
 }
 
-export default function DashboardPage() {
+/** W6 per-resume strip: each resume's label + its top match score. */
+function PerResumeStrip({ resumes }: { resumes: ResumeItem[] }) {
+  const ready = resumes.filter((r) => r.status === "READY");
+  const queries = useQueries({
+    queries: ready.map((r) => ({
+      queryKey: ["matches", "me", r.id],
+      queryFn: () => fetchMatches(r.id),
+    })),
+  });
+  if (resumes.length === 0) return null;
+  return (
+    <ul className="flex flex-col gap-2">
+      {resumes.map((r) => {
+        if (r.status !== "READY") {
+          return (
+            <li key={r.id} className="flex items-baseline justify-between gap-2 text-sm">
+              <span className="min-w-0 truncate font-medium text-slate-900">{r.label}</span>
+              <span className="shrink-0 text-xs text-slate-400">Not ready</span>
+            </li>
+          );
+        }
+        const q = queries[ready.findIndex((x) => x.id === r.id)];
+        const top = topMatchScoreForResume(q?.data);
+        return (
+          <li key={r.id} className="flex items-baseline justify-between gap-2 text-sm">
+            <span className="min-w-0 truncate font-medium text-slate-900">{r.label}</span>
+            <span className="shrink-0 text-slate-600">
+              {q?.isLoading ? "…" : top !== null ? `Top match ${top}%` : "No matches yet"}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function DashboardPageContent() {
   const { data: profile, isLoading: profileLoading } = useProfile();
   const { data: resumes, isLoading: resumesLoading } = useResumes();
-  const { data: matches, isLoading: matchesLoading } = useMatches();
+  const { selectedResumeId, setSelectedResumeId } = useSelectedResumeId(resumes);
+  const { data: matches, isLoading: matchesLoading } = useMatches(selectedResumeId);
   const { data: tracker, isLoading: trackerLoading } = useTracker();
   const { data: approvals, isLoading: approvalsLoading } = usePendingApprovals();
   const { data: sessions, isLoading: sessionsLoading } = useInterviewSessions();
 
   const top = topMatch(matches);
+  // W6: the "review your top match" next step keeps the selected resume
+  // in its link, like the Top matches card does.
   const nextSteps = deriveNextSteps({
     resumes,
     profile,
     pendingApprovals: approvals,
     matches,
-  });
+  }).map((step) =>
+    step.href === "/matches"
+      ? { ...step, href: matchesHref(selectedResumeId) }
+      : step,
+  );
   const activity = deriveRecentActivity({
     tracker,
     approvals,
@@ -292,10 +343,18 @@ export default function DashboardPage() {
         <CardHeader>
           <CardTitle>Top matches</CardTitle>
           <CardDescription>
-            Your best matches right now, by score.
+            Your best matches right now, by score, for the selected resume.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-4">
+          {(resumes?.length ?? 0) > 0 && (
+            <ResumeSelector
+              resumes={resumes ?? []}
+              value={selectedResumeId}
+              onChange={setSelectedResumeId}
+            />
+          )}
+          <PerResumeStrip resumes={resumes ?? []} />
           {topMatches.length === 0 ? (
             <p className="text-sm text-slate-600">
               No matches yet — complete your profile and upload a resume to
@@ -304,8 +363,8 @@ export default function DashboardPage() {
           ) : (
             <ul className="flex flex-col gap-4">
               {topMatches.map((match) => (
-                <li key={match.job.id}>
-                  <Link href="/matches" className="group flex flex-col gap-1.5">
+                <li key={match.job.id} className="flex flex-col gap-1.5">
+                  <Link href={matchesHref(selectedResumeId)} className="group flex flex-col gap-1.5">
                     <span className="flex items-baseline justify-between gap-2">
                       <span className="text-sm font-medium text-slate-900 group-hover:text-indigo-700">
                         {match.job.title} · {match.job.company}
@@ -328,6 +387,8 @@ export default function DashboardPage() {
                       />
                     </span>
                   </Link>
+                  {/* Outside the link: an <a> may not nest inside an <a>. */}
+                  <JobSource job={match.job} />
                 </li>
               ))}
             </ul>
@@ -335,5 +396,15 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// useSearchParams() needs a Suspense boundary so the page still
+// prerenders (Next.js CSR bailout rule for search params).
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-slate-500">Loading dashboard…</p>}>
+      <DashboardPageContent />
+    </Suspense>
   );
 }

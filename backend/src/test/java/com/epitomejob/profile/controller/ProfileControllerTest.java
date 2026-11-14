@@ -58,7 +58,7 @@ class ProfileControllerTest {
     return new ProfileResponse(UUID.randomUUID(), USER_ID, "Java Developer", null,
         "Reston, VA", "REMOTE", null, null, "USD", "PRIVATE",
         List.of("Java", "Spring Boot"), LocalDate.of(2026, 10, 15), 60,
-        Instant.now(), Instant.now());
+        Instant.now(), Instant.now(), null, null);
   }
 
   @Test
@@ -102,7 +102,8 @@ class ProfileControllerTest {
       ProfileUpdateRequest req = inv.getArgument(0);
       return new ProfileResponse(UUID.randomUUID(), USER_ID, "Java Developer", null,
           "Reston, VA", "REMOTE", null, null, req.currency(), req.visibility(),
-          req.skills(), req.h1bClockStartDate(), 60, Instant.now(), Instant.now());
+          req.skills(), req.h1bClockStartDate(), 60, Instant.now(), Instant.now(),
+          req.linkedinUrl(), req.workAuthorization());
     });
 
     mockMvc.perform(put("/profiles/me")
@@ -193,6 +194,75 @@ class ProfileControllerTest {
             .header("Authorization", "Bearer test-token")
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"skills\":[\"" + longSkill + "\"]}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+  }
+
+  @Test
+  void putMeRoundTripsLinkedinUrlAndWorkAuthorization() throws Exception {
+    authenticate();
+    when(service.upsertMe(any())).thenAnswer(inv -> {
+      ProfileUpdateRequest req = inv.getArgument(0);
+      return new ProfileResponse(UUID.randomUUID(), USER_ID, "Java Developer", null,
+          "Reston, VA", "REMOTE", null, null, req.currency(), req.visibility(),
+          req.skills(), req.h1bClockStartDate(), 60, Instant.now(), Instant.now(),
+          req.linkedinUrl(), req.workAuthorization());
+    });
+
+    mockMvc.perform(put("/profiles/me")
+            .header("Authorization", "Bearer test-token")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {"linkedinUrl":"https://www.linkedin.com/in/balachandar-jeldi","workAuthorization":"H1B"}"""))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.linkedinUrl").value("https://www.linkedin.com/in/balachandar-jeldi"))
+        .andExpect(jsonPath("$.workAuthorization").value("H1B"));
+
+    ArgumentCaptor<ProfileUpdateRequest> captor =
+        ArgumentCaptor.forClass(ProfileUpdateRequest.class);
+    verify(service).upsertMe(captor.capture());
+    assertEquals("https://www.linkedin.com/in/balachandar-jeldi",
+        captor.getValue().linkedinUrl());
+    assertEquals("H1B", captor.getValue().workAuthorization());
+  }
+
+  @Test
+  void putMeWithBadLinkedinUrlReturns400() throws Exception {
+    authenticate();
+    when(service.upsertMe(any())).thenThrow(
+        new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid LinkedIn URL"));
+
+    mockMvc.perform(put("/profiles/me")
+            .header("Authorization", "Bearer test-token")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {"linkedinUrl":"www.linkedin.com/in/balachandar-jeldi"}"""))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void putMeWithBadWorkAuthorizationReturns400() throws Exception {
+    authenticate();
+    when(service.upsertMe(any())).thenThrow(
+        new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid work authorization"));
+
+    mockMvc.perform(put("/profiles/me")
+            .header("Authorization", "Bearer test-token")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {"workAuthorization":"CITIZEN"}"""))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void putMeWithTooLongLinkedinUrlReturns400() throws Exception {
+    authenticate();
+    String longUrl = "https://" + "x".repeat(293); // 301 chars, over the 300 cap
+
+    mockMvc.perform(put("/profiles/me")
+            .header("Authorization", "Bearer test-token")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"linkedinUrl\":\"" + longUrl + "\"}"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
   }

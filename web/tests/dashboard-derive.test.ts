@@ -28,6 +28,8 @@ function profile(overrides: Partial<Profile> = {}): Profile {
     visibility: "PRIVATE",
     skills: [],
     h1bClockStartDate: null,
+    linkedinUrl: null,
+    workAuthorization: null,
     completeness: 100,
     createdAt: "2026-10-13T00:00:00.000Z",
     updatedAt: "2026-11-10T00:00:00.000Z",
@@ -38,6 +40,7 @@ function profile(overrides: Partial<Profile> = {}): Profile {
 function resume(overrides: Partial<ResumeItem> = {}): ResumeItem {
   return {
     id: "resume-1",
+    label: "resume.pdf",
     fileName: "resume.pdf",
     fileType: "application/pdf",
     fileSize: 1234,
@@ -63,6 +66,8 @@ function match(score: number, title = "Agentic AI Engineer"): Match {
       summary: "AI work",
       role: "AI",
       postedAt: "2026-11-11T09:00:00Z",
+      source: "LINKEDIN",
+      sourceUrl: "https://www.linkedin.com/jobs/search/?keywords=Agentic%20AI%20Engineer",
     },
     score,
     reasons: [],

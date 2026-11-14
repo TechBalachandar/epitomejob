@@ -26,6 +26,19 @@ public class ProfileService {
   @Transactional
   public ProfileResponse upsertMe(ProfileUpdateRequest incoming) {
     UUID userId = SecurityUtil.currentUserId();
+    // Fail fast, before loading the profile (same as visibility below):
+    // a bad LinkedIn URL or work authorisation is a 400 with no side effects.
+    if (incoming.linkedinUrl() != null
+        && !incoming.linkedinUrl().startsWith("http://")
+        && !incoming.linkedinUrl().startsWith("https://")) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+          AppConstants.Errors.INVALID_LINKEDIN_URL);
+    }
+    if (incoming.workAuthorization() != null
+        && !AppConstants.Profile.WORK_AUTHORIZATIONS.contains(incoming.workAuthorization())) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+          AppConstants.Errors.INVALID_WORK_AUTHORIZATION);
+    }
     if (incoming.visibility() != null
         && !AppConstants.Profile.VISIBILITY_PUBLIC.equals(incoming.visibility())
         && !AppConstants.Profile.VISIBILITY_PRIVATE.equals(incoming.visibility())) {
@@ -50,6 +63,8 @@ public class ProfileService {
     if (incoming.h1bClockStartDate() != null) profile.setH1bClockStartDate(incoming.h1bClockStartDate());
     if (incoming.currency() != null) profile.setCurrency(incoming.currency());
     if (incoming.visibility() != null) profile.setVisibility(incoming.visibility());
+    if (incoming.linkedinUrl() != null) profile.setLinkedinUrl(incoming.linkedinUrl());
+    if (incoming.workAuthorization() != null) profile.setWorkAuthorization(incoming.workAuthorization());
     profile.setCompleteness(profile.computeCompleteness());
     profile.touch();
     return ProfileResponse.from(profiles.save(profile));

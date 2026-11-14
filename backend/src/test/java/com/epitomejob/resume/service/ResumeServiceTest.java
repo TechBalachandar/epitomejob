@@ -1,6 +1,7 @@
 package com.epitomejob.resume.service;
 
 import com.epitomejob.common.exception.ResumeNotReadyException;
+import com.epitomejob.resume.dto.ResumeResponse;
 import com.epitomejob.resume.model.Resume;
 import com.epitomejob.resume.repository.ResumeRepository;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -189,5 +190,115 @@ class ResumeServiceTest {
     when(resumes.findById(any())).thenReturn(Optional.of(resume));
 
     assertThrows(ResumeNotReadyException.class, () -> service().getParsedText(resume.getId()));
+  }
+
+  @Test
+  void uploadWithLabelPersistsTrimmedLabel() throws Exception {
+    authenticate();
+    when(resumes.save(any())).thenAnswer(inv -> inv.getArgument(0));
+    var file = new MockMultipartFile("file", "resume.pdf", "application/pdf", realPdfBytes());
+
+    Resume saved = service().upload(file, "  Android Developer  ");
+
+    assertEquals("READY", saved.getStatus());
+    assertEquals("Android Developer", saved.getLabel(), "label is trimmed on upload");
+  }
+
+  @Test
+  void uploadWithoutLabelStoresNull() throws Exception {
+    authenticate();
+    when(resumes.save(any())).thenAnswer(inv -> inv.getArgument(0));
+    var file = new MockMultipartFile("file", "resume.pdf", "application/pdf", realPdfBytes());
+
+    Resume saved = service().upload(file);
+
+    assertEquals(null, saved.getLabel(), "no label given means a null label");
+  }
+
+  @Test
+  void uploadWithEmptyLabelStoresNull() throws Exception {
+    authenticate();
+    when(resumes.save(any())).thenAnswer(inv -> inv.getArgument(0));
+    var file = new MockMultipartFile("file", "resume.pdf", "application/pdf", realPdfBytes());
+
+    Resume saved = service().upload(file, "   ");
+
+    assertEquals(null, saved.getLabel(), "an empty label is stored as null");
+  }
+
+  @Test
+  void uploadWithTooLongLabelIsBadRequest() {
+    authenticate();
+    // Label validation runs before any blob write or save: no stubs here —
+    // a stubbed blob or save would be unused and Mockito strict stubs fail.
+    var file = new MockMultipartFile("file", "resume.pdf", "application/pdf", "fake".getBytes());
+    var ex = assertThrows(ResponseStatusException.class,
+        () -> service().upload(file, "x".repeat(81)));
+    assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+  }
+
+  @Test
+  void resumeResponseFallsBackToFileNameWhenLabelNull() {
+    Resume resume = new Resume(USER_ID, "u1/f.pdf", "resume.pdf", "pdf", 100);
+    assertEquals("resume.pdf",
+        ResumeResponse.from(resume).label(),
+        "the label is never null in the API");
+
+    resume.setLabel("Android Developer");
+    assertEquals("Android Developer",
+        ResumeResponse.from(resume).label());
+  }
+
+  @Test
+  void renameLabelUpdatesLabel() {
+    authenticate();
+    Resume resume = new Resume(USER_ID, "u1/f.pdf", "resume.pdf", "pdf", 100);
+    resume.setStatus("READY");
+    when(resumes.findById(resume.getId())).thenReturn(Optional.of(resume));
+    when(resumes.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+    Resume renamed = service().renameLabel(resume.getId(), "  Java Backend  ");
+
+    assertEquals("Java Backend", renamed.getLabel(), "label is trimmed on rename");
+    verify(resumes).save(resume);
+  }
+
+  @Test
+  void renameLabelMissingIs404() {
+    authenticate();
+    when(resumes.findById(any())).thenReturn(Optional.empty());
+
+    var ex = assertThrows(ResponseStatusException.class,
+        () -> service().renameLabel(UUID.randomUUID(), "Android Developer"));
+    assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+  }
+
+  @Test
+  void renameLabelNotOwnerIs404() {
+    authenticate();
+    Resume resume = new Resume(UUID.randomUUID(), "u1/f.pdf", "resume.pdf", "pdf", 100);
+    when(resumes.findById(any())).thenReturn(Optional.of(resume));
+
+    var ex = assertThrows(ResponseStatusException.class,
+        () -> service().renameLabel(resume.getId(), "Android Developer"));
+    assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
+  }
+
+  @Test
+  void renameLabelBlankIs400() {
+    authenticate();
+    // Label validation runs before the resume is loaded: no findById stub.
+    var ex = assertThrows(ResponseStatusException.class,
+        () -> service().renameLabel(UUID.randomUUID(), "   "));
+    assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+  }
+
+  @Test
+  void renameLabelTooLongIs400() {
+    authenticate();
+    // Label validation runs before the resume is loaded: no findById stub.
+    var ex = assertThrows(ResponseStatusException.class,
+        () -> service().renameLabel(UUID.randomUUID(), "x".repeat(81)));
+    assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
   }
 }

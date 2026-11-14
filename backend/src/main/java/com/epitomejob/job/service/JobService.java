@@ -26,8 +26,9 @@ public class JobService {
 
   @Transactional(readOnly = true)
   public Page<JobDto> search(String query, String location, String workType,
-                             Boolean sponsorsH1b, Pageable pageable) {
-    return provider.search(query, location, workType, sponsorsH1b, pageable).map(JobDto::from);
+                             Boolean sponsorsH1b, String source, Pageable pageable) {
+    return provider.search(query, location, workType, sponsorsH1b, source, pageable)
+        .map(JobDto::from);
   }
 
   @Transactional(readOnly = true)

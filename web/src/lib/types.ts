@@ -11,6 +11,13 @@ export interface AuthResponse {
   role: string;
 }
 
+export type WorkAuthorization =
+  | "US_CITIZEN"
+  | "GREEN_CARD"
+  | "EAD"
+  | "H1B"
+  | "OTHER";
+
 export interface Profile {
   id: string;
   userId: string;
@@ -26,6 +33,10 @@ export interface Profile {
   skills: string[];
   /** H-1B 60-day clock start date (ISO "YYYY-MM-DD"), null when unset. */
   h1bClockStartDate: string | null;
+  /** W6: LinkedIn profile URL, null when unset. Adds no completeness points. */
+  linkedinUrl: string | null;
+  /** W6: work authorisation, null when unset. Adds no completeness points. */
+  workAuthorization: WorkAuthorization | null;
   completeness: number;
   createdAt: string;
   updatedAt: string;
@@ -42,12 +53,16 @@ export interface ProfileUpdate {
   h1bClockStartDate?: string | null;
   visibility?: string;
   currency?: string;
+  linkedinUrl?: string | null;
+  workAuthorization?: WorkAuthorization | null;
 }
 
 export type ResumeStatus = "PROCESSING" | "READY" | "FAILED";
 
 export interface ResumeItem {
   id: string;
+  /** W6: display label; the API never returns null (falls back to fileName). */
+  label: string;
   fileName: string;
   fileType: string;
   fileSize: number;
@@ -71,6 +86,15 @@ export interface Approval {
 export type WorkType = "Remote" | "Hybrid" | "Onsite";
 export type JobRole = "Backend" | "AI" | "Android" | "Platform" | "ML" | "General";
 
+/** W6: which portal / source a job came from (JobDto.source). */
+export type JobSource =
+  | "LINKEDIN"
+  | "INDEED"
+  | "MONSTER"
+  | "NAUKRI"
+  | "COMPANY"
+  | "SEED";
+
 export interface Job {
   id: string;
   title: string;
@@ -85,6 +109,10 @@ export interface Job {
   summary: string;
   role: JobRole;
   postedAt: string;
+  /** W6: job source; older stub data without it renders as SEED. */
+  source: JobSource;
+  /** W6: apply link back to the source portal; null = badge only, no link. */
+  sourceUrl: string | null;
 }
 
 export interface JobPage {

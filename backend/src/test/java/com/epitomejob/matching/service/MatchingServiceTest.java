@@ -1,5 +1,6 @@
 package com.epitomejob.matching.service;
 
+import com.epitomejob.common.exception.ResumeNotReadyException;
 import com.epitomejob.job.model.Job;
 import com.epitomejob.job.repository.JobRepository;
 import com.epitomejob.matching.dto.MatchDto;
@@ -90,7 +91,7 @@ class MatchingServiceTest {
         readyResume("Java 21 developer with Spring Boot and Kafka experience."));
     when(jobs.findAll()).thenReturn(List.of(j));
 
-    List<MatchDto> matches = service().matchesForMe();
+    List<MatchDto> matches = service().matchesForMe(null);
 
     assertEquals(1, matches.size());
     assertEquals(100, matches.get(0).score());
@@ -107,7 +108,7 @@ class MatchingServiceTest {
     stubCandidate(null, null);
     when(jobs.findAll()).thenReturn(List.of(j));
 
-    MatchDto match = service().matchesForMe().get(0);
+    MatchDto match = service().matchesForMe(null).get(0);
 
     assertEquals("PROFILE", match.source());
     // skills 0 + location 0 + work type 5 + salary 7 + sponsorship 0 = 12
@@ -129,7 +130,7 @@ class MatchingServiceTest {
     stubCandidate(profile("Reston, VA", "Onsite", 200000, 220000), null);
     when(jobs.findAll()).thenReturn(List.of(j));
 
-    MatchDto match = service().matchesForMe().get(0);
+    MatchDto match = service().matchesForMe(null).get(0);
 
     assertEquals("PROFILE", match.source());
     // skills 0 + location 10 + work type 0 + salary 0 + sponsorship 0 = 10
@@ -146,7 +147,7 @@ class MatchingServiceTest {
         readyResume("Python developer."));
     when(jobs.findAll()).thenReturn(List.of(j));
 
-    MatchDto match = service().matchesForMe().get(0);
+    MatchDto match = service().matchesForMe(null).get(0);
 
     // skills 50 + location 10 + work type 10 + salary 7 + sponsorship 15 = 92
     assertEquals(92, match.score());
@@ -179,7 +180,7 @@ class MatchingServiceTest {
         readyResume("Java developer."));
     when(jobs.findAll()).thenReturn(List.of(low, high));
 
-    List<MatchDto> matches = service().matchesForMe();
+    List<MatchDto> matches = service().matchesForMe(null);
 
     assertEquals(high.getId(), matches.get(0).job().id());
     assertTrue(matches.get(0).score() > matches.get(1).score());
@@ -193,12 +194,12 @@ class MatchingServiceTest {
 
     Profile withoutSkill = profile("Reston, VA", "Remote", 100000, 200000);
     stubCandidate(withoutSkill, null);
-    int scoreWithoutSkill = service().matchesForMe().get(0).score();
+    int scoreWithoutSkill = service().matchesForMe(null).get(0).score();
 
     Profile withSkill = profile("Reston, VA", "Remote", 100000, 200000);
     withSkill.setSkills(List.of("LangGraph"));
     stubCandidate(withSkill, null);
-    int scoreWithSkill = service().matchesForMe().get(0).score();
+    int scoreWithSkill = service().matchesForMe(null).get(0).score();
 
     // skills 0 + location 10 + work type 10 + salary 15 + sponsorship 15 = 50
     assertEquals(50, scoreWithoutSkill);
@@ -215,7 +216,138 @@ class MatchingServiceTest {
     when(jobs.findById(jobId)).thenReturn(Optional.empty());
 
     ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-        () -> service().matchForJob(jobId));
+        () -> service().matchForJob(jobId, null));
     assertEquals(404, ex.getStatusCode().value());
+  }
+
+  // ---- W6 contract §2c: per-resume matching ----
+
+  private Job jobWithSkills(String title, List<String> skills) {
+    return new Job(title, "Northwind Health Systems", "Remote (US)", "Remote",
+        100000, 200000, true, skills, "Remote role.", "Backend",
+        Instant.parse("2026-11-10T09:00:00Z"));
+  }
+
+  @Test
+  void differentResumesGiveDifferentTopMatches() {
+    authenticate();
+    Job javaJob = jobWithSkills("Senior Software Engineer, Backend (Java)",
+        List.of("Java", "Spring Boot"));
+    Job androidJob = jobWithSkills("Senior Android Engineer",
+        List.of("Kotlin", "Android"));
+    // Profile is skill-free and identical for both calls, so only the resume
+    // text can move the scores: non-skill points are equal (50) for both jobs.
+    Profile p = profile("Reston, VA", "Remote", 100000, 200000);
+    Resume javaResume = readyResume("Java Spring Boot developer with Kafka experience.");
+    Resume androidResume = readyResume("Kotlin Android developer, Jetpack Compose.");
+    when(profiles.findByUserId(USER_ID)).thenReturn(Optional.of(p));
+    when(resumes.findById(javaResume.getId())).thenReturn(Optional.of(javaResume));
+    when(resumes.findById(androidResume.getId())).thenReturn(Optional.of(androidResume));
+    when(jobs.findAll()).thenReturn(List.of(javaJob, androidJob));
+
+    List<MatchDto> javaMatches = service().matchesForMe(javaResume.getId());
+    List<MatchDto> androidMatches = service().matchesForMe(androidResume.getId());
+
+    assertEquals(javaJob.getId(), javaMatches.get(0).job().id());
+    assertEquals(100, javaMatches.get(0).score());
+    assertEquals(androidJob.getId(), androidMatches.get(0).job().id());
+    assertEquals(100, androidMatches.get(0).score());
+  }
+
+  @Test
+  void matchesForMeWithWrongOwnerResumeIs404() {
+    authenticate();
+    Resume someoneElses = new Resume(UUID.randomUUID(), "u/r.pdf", "resume.pdf", "pdf", 100);
+    someoneElses.setStatus("READY");
+    someoneElses.setParsedText("Java developer.");
+    // Only the resume lookup is stubbed: the 404 throws before the profile
+    // or the jobs are ever read, so stubbing them would be unused.
+    when(resumes.findById(someoneElses.getId())).thenReturn(Optional.of(someoneElses));
+
+    ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+        () -> service().matchesForMe(someoneElses.getId()));
+    assertEquals(404, ex.getStatusCode().value());
+  }
+
+  @Test
+  void matchesForMeWithMissingResumeIs404() {
+    authenticate();
+    UUID missing = UUID.randomUUID();
+    when(resumes.findById(missing)).thenReturn(Optional.empty());
+
+    ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+        () -> service().matchesForMe(missing));
+    assertEquals(404, ex.getStatusCode().value());
+  }
+
+  @Test
+  void matchesForMeWithNotReadyResumeIs400() {
+    authenticate();
+    Resume uploaded = new Resume(USER_ID, "u/r.pdf", "resume.pdf", "pdf", 100);
+    // Default status is UPLOADED, not READY.
+    when(resumes.findById(uploaded.getId())).thenReturn(Optional.of(uploaded));
+
+    assertThrows(ResumeNotReadyException.class,
+        () -> service().matchesForMe(uploaded.getId()));
+  }
+
+  @Test
+  void matchesForMeWithoutResumeIdUsesLatestReadyResume() {
+    authenticate();
+    Job javaJob = jobWithSkills("Senior Software Engineer, Backend (Java)",
+        List.of("Java", "Spring Boot"));
+    Job androidJob = jobWithSkills("Senior Android Engineer",
+        List.of("Kotlin", "Android"));
+    Profile p = profile("Reston, VA", "Remote", 100000, 200000);
+    // List is newest-first: the Android resume is the latest READY one.
+    Resume latest = readyResume("Kotlin Android developer, Jetpack Compose.");
+    Resume older = readyResume("Java Spring Boot developer.");
+    when(profiles.findByUserId(USER_ID)).thenReturn(Optional.of(p));
+    when(resumes.findByUserIdOrderByCreatedAtDesc(USER_ID))
+        .thenReturn(List.of(latest, older));
+    when(jobs.findAll()).thenReturn(List.of(javaJob, androidJob));
+
+    List<MatchDto> matches = service().matchesForMe(null);
+
+    assertEquals(androidJob.getId(), matches.get(0).job().id(),
+        "no resumeId must still use the latest READY resume");
+    assertEquals(100, matches.get(0).score());
+  }
+
+  @Test
+  void matchForJobWithResumeIdUsesThatResume() {
+    authenticate();
+    Job javaJob = jobWithSkills("Senior Software Engineer, Backend (Java)",
+        List.of("Java", "Spring Boot"));
+    Job androidJob = jobWithSkills("Senior Android Engineer",
+        List.of("Kotlin", "Android"));
+    Profile p = profile("Reston, VA", "Remote", 100000, 200000);
+    Resume androidResume = readyResume("Kotlin Android developer, Jetpack Compose.");
+    when(jobs.findById(androidJob.getId())).thenReturn(Optional.of(androidJob));
+    when(profiles.findByUserId(USER_ID)).thenReturn(Optional.of(p));
+    when(resumes.findById(androidResume.getId())).thenReturn(Optional.of(androidResume));
+
+    MatchDto match = service().matchForJob(androidJob.getId(), androidResume.getId());
+
+    assertEquals(100, match.score());
+    assertEquals("RESUME", match.source());
+    // The Java job would score 50 with this resume; the chosen resume, not
+    // the latest READY one, decides the score — prove it via the Android job.
+    assertEquals(androidJob.getId(), match.job().id());
+  }
+
+  @Test
+  void loadCandidateWithResumeIdUsesThatResumeText() {
+    authenticate();
+    Resume androidResume = readyResume("Kotlin Android developer, Jetpack Compose.");
+    when(profiles.findByUserId(USER_ID)).thenReturn(Optional.empty());
+    when(resumes.findById(androidResume.getId())).thenReturn(Optional.of(androidResume));
+
+    MatchingService.Candidate candidate =
+        service().loadCandidate(USER_ID, androidResume.getId());
+
+    assertEquals("RESUME", candidate.source());
+    assertTrue(candidate.text().contains("kotlin"));
+    assertTrue(candidate.text().contains("android"));
   }
 }

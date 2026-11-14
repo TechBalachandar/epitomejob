@@ -53,7 +53,7 @@ class MatchingControllerTest {
     JobDto job = new JobDto(JOB_ID, "Senior Software Engineer, Backend (Java)",
         "Northwind Health Systems", "Reston, VA", "Hybrid", 145000, 175000, "USD",
         true, List.of("Java 21", "Spring Boot", "Kafka"), "Backend APIs.", "Backend",
-        Instant.parse("2026-11-10T09:00:00Z"));
+        Instant.parse("2026-11-10T09:00:00Z"), "LINKEDIN", "https://www.linkedin.com/jobs/search/?keywords=Backend%20Engineer");
     return new MatchDto(job, 82,
         List.of(new MatchReasonDto("Skills: Java 21, Spring Boot, Kafka (+38)", 38)),
         List.of("Missing skill: Azure"), "RESUME");
@@ -62,19 +62,46 @@ class MatchingControllerTest {
   @Test
   void matchesForMeReturnsList() throws Exception {
     authenticate();
-    when(service.matchesForMe()).thenReturn(List.of(match()));
+    when(service.matchesForMe(null)).thenReturn(List.of(match()));
 
     mockMvc.perform(get("/matches/me").header("Authorization", "Bearer test-token"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$[0].score").value(82))
         .andExpect(jsonPath("$[0].source").value("RESUME"))
+        .andExpect(jsonPath("$[0].job.source").value("LINKEDIN"))
+        .andExpect(jsonPath("$[0].job.sourceUrl")
+            .value("https://www.linkedin.com/jobs/search/?keywords=Backend%20Engineer"))
         .andExpect(jsonPath("$[0].gaps[0]").value("Missing skill: Azure"));
+  }
+
+  @Test
+  void matchesForMeWithResumeIdPassesItThrough() throws Exception {
+    authenticate();
+    UUID resumeId = UUID.randomUUID();
+    when(service.matchesForMe(resumeId)).thenReturn(List.of(match()));
+
+    mockMvc.perform(get("/matches/me?resumeId=" + resumeId)
+            .header("Authorization", "Bearer test-token"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].score").value(82));
+  }
+
+  @Test
+  void matchForJobWithResumeIdPassesItThrough() throws Exception {
+    authenticate();
+    UUID resumeId = UUID.randomUUID();
+    when(service.matchForJob(JOB_ID, resumeId)).thenReturn(match());
+
+    mockMvc.perform(get("/matches/" + JOB_ID + "?resumeId=" + resumeId)
+            .header("Authorization", "Bearer test-token"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.job.id").value(JOB_ID.toString()));
   }
 
   @Test
   void matchForJobReturnsMatch() throws Exception {
     authenticate();
-    when(service.matchForJob(JOB_ID)).thenReturn(match());
+    when(service.matchForJob(JOB_ID, null)).thenReturn(match());
 
     mockMvc.perform(get("/matches/" + JOB_ID).header("Authorization", "Bearer test-token"))
         .andExpect(status().isOk())
@@ -84,7 +111,7 @@ class MatchingControllerTest {
   @Test
   void matchForMissingJobIs404() throws Exception {
     authenticate();
-    when(service.matchForJob(JOB_ID))
+    when(service.matchForJob(JOB_ID, null))
         .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Job not found"));
 
     mockMvc.perform(get("/matches/" + JOB_ID).header("Authorization", "Bearer test-token"))

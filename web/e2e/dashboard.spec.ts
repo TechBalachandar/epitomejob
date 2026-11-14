@@ -104,6 +104,7 @@ async function stubDashboard(page: Page, profile: Record<string, unknown>) {
       json: [
         {
           id: "resume-1",
+          label: "resume.pdf",
           fileName: "resume.pdf",
           fileType: "application/pdf",
           fileSize: 1234,
@@ -113,7 +114,10 @@ async function stubDashboard(page: Page, profile: Record<string, unknown>) {
       ],
     }),
   );
-  await page.route("**/api/matches/me", (route) =>
+  // W6: the dashboard fetches matches with ?resumeId= (selected resume)
+  // and once per READY resume for the per-resume strip — the glob must
+  // match the query string too.
+  await page.route("**/api/matches/me**", (route) =>
     route.fulfill({ status: 200, json: MATCHES }),
   );
   await page.route("**/api/tracker", (route) =>

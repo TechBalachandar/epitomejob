@@ -20,12 +20,14 @@ public record JobDto(
     List<String> skills,
     String summary,
     String role,
-    Instant postedAt) {
+    Instant postedAt,
+    String source,
+    String sourceUrl) {
 
   public static JobDto from(Job job) {
     return new JobDto(job.getId(), job.getTitle(), job.getCompany(), job.getLocation(),
         job.getWorkType(), job.getSalaryMin(), job.getSalaryMax(), job.getCurrency(),
         job.isSponsorsH1b(), job.getSkills(), job.getSummary(), job.getRole(),
-        job.getPostedAt());
+        job.getPostedAt(), job.getSource(), job.getSourceUrl());
   }
 }

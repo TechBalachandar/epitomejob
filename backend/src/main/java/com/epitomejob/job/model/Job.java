@@ -6,6 +6,9 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
@@ -58,6 +61,16 @@ public class Job {
   @Column(nullable = false)
   private String role;
 
+  /** Where the posting was aggregated from (W6 contract §2d). Defaults to
+   * SEED for rows created before V8; the setter validates the value. */
+  @Column(nullable = false, length = 30)
+  private String source = AppConstants.Job.SOURCE_SEED;
+
+  /** Apply link back to the source portal (W6 contract §2d). Nullable; when
+   * present it must start with http:// or https:// (see setter). */
+  @Column(length = 500)
+  private String sourceUrl;
+
   @Column(nullable = false)
   private Instant postedAt = Instant.now();
 
@@ -93,6 +106,23 @@ public class Job {
   public boolean isSponsorsH1b() { return sponsorsH1b; }
   public String getSummary() { return summary; }
   public String getRole() { return role; }
+  public String getSource() { return source; }
+  public void setSource(String source) {
+    if (source == null || !AppConstants.Job.SOURCES.contains(source)) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+          AppConstants.Errors.INVALID_JOB_SOURCE);
+    }
+    this.source = source;
+  }
+  public String getSourceUrl() { return sourceUrl; }
+  public void setSourceUrl(String sourceUrl) {
+    if (sourceUrl != null && !sourceUrl.startsWith("http://")
+        && !sourceUrl.startsWith("https://")) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+          AppConstants.Errors.INVALID_JOB_SOURCE_URL);
+    }
+    this.sourceUrl = sourceUrl;
+  }
   public Instant getPostedAt() { return postedAt; }
   public Instant getCreatedAt() { return createdAt; }
 

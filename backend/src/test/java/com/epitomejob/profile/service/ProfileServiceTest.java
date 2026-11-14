@@ -1,5 +1,6 @@
 package com.epitomejob.profile.service;
 
+import com.epitomejob.common.constants.AppConstants;
 import com.epitomejob.profile.dto.ProfileUpdateRequest;
 import com.epitomejob.profile.model.Profile;
 import com.epitomejob.profile.repository.ProfileRepository;
@@ -55,7 +56,7 @@ class ProfileServiceTest {
     when(profiles.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
     var response = service().upsertMe(new ProfileUpdateRequest(
-        "Java Developer", null, "Reston, VA", "REMOTE", null, null, null, null, null, null));
+        "Java Developer", null, "Reston, VA", "REMOTE", null, null, null, null, null, null, null, null));
 
     assertEquals("Java Developer", response.headline());
     assertEquals(List.of(), response.skills(), "no skills set yet");
@@ -75,7 +76,7 @@ class ProfileServiceTest {
     when(profiles.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
     var response = service().upsertMe(new ProfileUpdateRequest(
-        null, null, "Reston, VA", null, null, null, null, null, null, null));
+        null, null, "Reston, VA", null, null, null, null, null, null, null, null, null));
 
     assertEquals("Old headline", response.headline(), "null fields must not overwrite");
     assertEquals(40, response.completeness(), "headline + location = 40");
@@ -117,7 +118,7 @@ class ProfileServiceTest {
     var response = service().upsertMe(new ProfileUpdateRequest(
         null, null, null, null, null, null,
         List.of("  Spring Boot ", "Java", "Java", "", "   ", "LangGraph"),
-        null, null, null));
+        null, null, null, null, null));
 
     assertEquals(List.of("Java", "LangGraph", "Spring Boot"),
         response.skills(), "trimmed, deduped, sorted alphabetically");
@@ -136,7 +137,7 @@ class ProfileServiceTest {
     List<String> thirty = IntStream.rangeClosed(1, 30).mapToObj(i -> "Skill" + i).toList();
 
     var response = service().upsertMe(new ProfileUpdateRequest(
-        null, null, null, null, null, null, thirty, null, null, null));
+        null, null, null, null, null, null, thirty, null, null, null, null, null));
 
     assertEquals(30, response.skills().size());
   }
@@ -150,7 +151,7 @@ class ProfileServiceTest {
     when(profiles.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
     var response = service().upsertMe(new ProfileUpdateRequest(
-        null, null, null, null, null, null, List.of(), null, null, null));
+        null, null, null, null, null, null, List.of(), null, null, null, null, null));
 
     assertEquals(List.of(), response.skills());
     ArgumentCaptor<Profile> saved = ArgumentCaptor.forClass(Profile.class);
@@ -167,7 +168,7 @@ class ProfileServiceTest {
     when(profiles.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
     var response = service().upsertMe(new ProfileUpdateRequest(
-        null, null, null, null, null, null, null, null, null, null));
+        null, null, null, null, null, null, null, null, null, null, null, null));
 
     assertEquals(List.of("Java"), response.skills(), "null skills must not overwrite");
   }
@@ -180,7 +181,7 @@ class ProfileServiceTest {
 
     var response = service().upsertMe(new ProfileUpdateRequest(
         null, null, null, null, null, null, null,
-        LocalDate.of(2026, 10, 15), "EUR", "PUBLIC"));
+        LocalDate.of(2026, 10, 15), "EUR", "PUBLIC", null, null));
 
     assertEquals(LocalDate.of(2026, 10, 15), response.h1bClockStartDate());
     assertEquals("EUR", response.currency());
@@ -196,7 +197,7 @@ class ProfileServiceTest {
     when(profiles.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
     var response = service().upsertMe(new ProfileUpdateRequest(
-        null, null, null, null, null, null, null, null, null, null));
+        null, null, null, null, null, null, null, null, null, null, null, null));
 
     assertEquals(LocalDate.of(2026, 10, 15), response.h1bClockStartDate(),
         "null clock date must not overwrite");
@@ -208,7 +209,7 @@ class ProfileServiceTest {
 
     ResponseStatusException ex = assertThrows(ResponseStatusException.class,
         () -> service().upsertMe(new ProfileUpdateRequest(
-            null, null, null, null, null, null, null, null, null, "SECRET")));
+            null, null, null, null, null, null, null, null, null, "SECRET", null, null)));
 
     assertEquals(400, ex.getStatusCode().value());
   }
@@ -228,7 +229,7 @@ class ProfileServiceTest {
 
     var response = service().upsertMe(new ProfileUpdateRequest(
         null, null, null, null, null, null,
-        List.of("Java", "LangGraph"), LocalDate.of(2026, 10, 15), null, null));
+        List.of("Java", "LangGraph"), LocalDate.of(2026, 10, 15), null, null, null, null));
 
     assertEquals(100, response.completeness(),
         "skills + clock date add no completeness points");
@@ -243,5 +244,92 @@ class ProfileServiceTest {
     plain.setSalaryMin(120_000);
     plain.setSalaryMax(160_000);
     assertEquals(100, plain.computeCompleteness());
+  }
+
+  @Test
+  void upsertPersistsLinkedinUrlAndWorkAuthorization() {
+    authenticate();
+    when(profiles.findByUserId(USER_ID)).thenReturn(Optional.empty());
+    when(profiles.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+    var response = service().upsertMe(new ProfileUpdateRequest(
+        null, null, null, null, null, null, null, null, null, null,
+        "https://www.linkedin.com/in/balachandar-jeldi", "H1B"));
+
+    assertEquals("https://www.linkedin.com/in/balachandar-jeldi", response.linkedinUrl());
+    assertEquals("H1B", response.workAuthorization());
+    assertEquals(0, response.completeness(),
+        "LinkedIn URL + work authorisation add no completeness points");
+    ArgumentCaptor<Profile> saved = ArgumentCaptor.forClass(Profile.class);
+    verify(profiles).save(saved.capture());
+    assertEquals("https://www.linkedin.com/in/balachandar-jeldi",
+        saved.getValue().getLinkedinUrl());
+    assertEquals("H1B", saved.getValue().getWorkAuthorization());
+  }
+
+  @Test
+  void upsertBadLinkedinUrlIs400() {
+    authenticate();
+    // Validation runs before the profile is loaded: no repository stub here —
+    // a stubbed findByUserId would be unused and Mockito strict stubs fail.
+    ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+        () -> service().upsertMe(new ProfileUpdateRequest(
+            null, null, null, null, null, null, null, null, null, null,
+            "www.linkedin.com/in/balachandar-jeldi", null)));
+
+    assertEquals(400, ex.getStatusCode().value());
+    assertEquals(AppConstants.Errors.INVALID_LINKEDIN_URL, ex.getReason());
+  }
+
+  @Test
+  void upsertBadWorkAuthorizationIs400() {
+    authenticate();
+    // Validation runs before the profile is loaded: no repository stub.
+    ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+        () -> service().upsertMe(new ProfileUpdateRequest(
+            null, null, null, null, null, null, null, null, null, null,
+            null, "CITIZEN")));
+
+    assertEquals(400, ex.getStatusCode().value());
+    assertEquals(AppConstants.Errors.INVALID_WORK_AUTHORIZATION, ex.getReason());
+  }
+
+  @Test
+  void upsertNullLinkedinUrlAndWorkAuthorizationLeaveUnchanged() {
+    authenticate();
+    Profile existing = new Profile(USER_ID);
+    existing.setLinkedinUrl("https://www.linkedin.com/in/balachandar-jeldi");
+    existing.setWorkAuthorization("EAD");
+    when(profiles.findByUserId(USER_ID)).thenReturn(Optional.of(existing));
+    when(profiles.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+    var response = service().upsertMe(new ProfileUpdateRequest(
+        null, null, "Reston, VA", null, null, null, null, null, null, null, null, null));
+
+    assertEquals("https://www.linkedin.com/in/balachandar-jeldi", response.linkedinUrl(),
+        "null LinkedIn URL must not overwrite");
+    assertEquals("EAD", response.workAuthorization(),
+        "null work authorisation must not overwrite");
+  }
+
+  @Test
+  void linkedinUrlAndWorkAuthorizationAddNoCompletenessPoints() {
+    authenticate();
+    Profile existing = new Profile(USER_ID);
+    existing.setHeadline("Java Developer");
+    existing.setSummary("17 years of experience");
+    existing.setLocation("Reston, VA");
+    existing.setWorkType("REMOTE");
+    existing.setSalaryMin(120_000);
+    existing.setSalaryMax(160_000);
+    when(profiles.findByUserId(USER_ID)).thenReturn(Optional.of(existing));
+    when(profiles.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+    var response = service().upsertMe(new ProfileUpdateRequest(
+        null, null, null, null, null, null, null, null, null, null,
+        "https://www.linkedin.com/in/balachandar-jeldi", "US_CITIZEN"));
+
+    assertEquals(100, response.completeness(),
+        "LinkedIn URL + work authorisation add no completeness points");
   }
 }

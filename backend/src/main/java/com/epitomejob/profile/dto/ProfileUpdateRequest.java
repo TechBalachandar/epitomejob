@@ -18,4 +18,6 @@ public record ProfileUpdateRequest(
     @Size(max = 30) List<@Size(max = 60) String> skills,
     LocalDate h1bClockStartDate,
     @Pattern(regexp = "^[A-Z]{3}$") String currency,
-    String visibility) {}
+    String visibility,
+    @Size(max = 300) String linkedinUrl,
+    String workAuthorization) {}

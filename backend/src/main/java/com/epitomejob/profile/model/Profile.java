@@ -50,6 +50,14 @@ public class Profile {
 
   private LocalDate h1bClockStartDate;
 
+  /** LinkedIn profile URL (W6 contract §2e): nullable, max 300 chars. */
+  @Column(length = 300)
+  private String linkedinUrl;
+
+  /** Work authorisation (W6 contract §2e): one of the AppConstants.Profile WORK_AUTH_* values. */
+  @Column(length = 20)
+  private String workAuthorization;
+
   @Column(nullable = false)
   private int completeness = 0;
 
@@ -89,6 +97,10 @@ public class Profile {
   }
   public LocalDate getH1bClockStartDate() { return h1bClockStartDate; }
   public void setH1bClockStartDate(LocalDate d) { this.h1bClockStartDate = d; }
+  public String getLinkedinUrl() { return linkedinUrl; }
+  public void setLinkedinUrl(String u) { this.linkedinUrl = u; }
+  public String getWorkAuthorization() { return workAuthorization; }
+  public void setWorkAuthorization(String w) { this.workAuthorization = w; }
   public int getCompleteness() { return completeness; }
   public Instant getCreatedAt() { return createdAt; }
   public Instant getUpdatedAt() { return updatedAt; }
@@ -99,6 +111,8 @@ public class Profile {
   // Skills and the H-1B clock date deliberately add NO completeness points:
   // completeness measures the five core profile fields only. Skills are an
   // additive signal for matching; the clock date is a wedge tracker.
+  // (W6 contract §2e) The LinkedIn URL and work authorisation likewise add
+  // NO points — they are display / eligibility fields, not completeness.
   public int computeCompleteness() {
     int score = 0;
     int points = AppConstants.Profile.COMPLETENESS_POINTS_PER_FIELD;

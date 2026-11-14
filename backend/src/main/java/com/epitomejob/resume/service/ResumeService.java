@@ -28,8 +28,16 @@ public class ResumeService {
     this.blob = blob;
   }
 
+  /** Upload without a label (kept so existing callers/tests are unchanged). */
   @Transactional
   public Resume upload(MultipartFile file) throws Exception {
+    return upload(file, null);
+  }
+
+  @Transactional
+  public Resume upload(MultipartFile file, String label) throws Exception {
+    // Label first, before any blob write: a bad label must not store a file.
+    String cleanLabel = normalizeLabel(label, false);
     if (file == null || file.isEmpty()) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, AppConstants.Errors.NO_FILE_UPLOADED);
     }
@@ -44,6 +52,7 @@ public class ResumeService {
     String blobPath = userId + "/" + UUID.randomUUID() + AppConstants.Resume.PDF_EXTENSION;
     blob.put(blobPath, file.getInputStream(), file.getSize(), AppConstants.Resume.PDF_CONTENT_TYPE);
     Resume resume = resumes.save(new Resume(userId, blobPath, name, "pdf", (int) file.getSize()));
+    resume.setLabel(cleanLabel);
     try (PDDocument doc = Loader.loadPDF(file.getBytes())) {
       String text = new PDFTextStripper().getText(doc);
       resume.setParsedText(text.length() > AppConstants.Resume.MAX_PARSED_TEXT_CHARS
@@ -53,6 +62,41 @@ public class ResumeService {
       resume.setStatus(AppConstants.Resume.STATUS_FAILED); // file is kept; the user can re-upload
     }
     return resumes.save(resume);
+  }
+
+  /**
+   * Rename a resume's label only (W6 contract §2b). Owner-only: a missing
+   * resume or one belonging to someone else is a 404.
+   */
+  @Transactional
+  public Resume renameLabel(UUID id, String label) {
+    String cleanLabel = normalizeLabel(label, true);
+    Resume resume = resumes.findById(id)
+        .filter(r -> r.getUserId().equals(SecurityUtil.currentUserId()))
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+            AppConstants.Errors.RESUME_NOT_FOUND));
+    resume.setLabel(cleanLabel);
+    return resumes.save(resume);
+  }
+
+  /**
+   * Trims a label; an empty string becomes null (upload) and a missing/blank
+   * label is a 400 when {@code required} (rename). Over 80 chars is a 400.
+   */
+  private String normalizeLabel(String label, boolean required) {
+    String clean = label == null ? null : label.trim();
+    if (clean == null || clean.isEmpty()) {
+      if (required) {
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+            AppConstants.Errors.INVALID_RESUME_LABEL);
+      }
+      return null;
+    }
+    if (clean.length() > AppConstants.Resume.MAX_LABEL_LENGTH) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+          AppConstants.Errors.INVALID_RESUME_LABEL);
+    }
+    return clean;
   }
 
   @Transactional(readOnly = true)

@@ -45,6 +45,23 @@ class ProfileTest {
   }
 
   @Test
+  void linkedinUrlAndWorkAuthorizationAddNoCompletenessPoints() {
+    Profile p = profile();
+    p.setLinkedinUrl("https://www.linkedin.com/in/balachandar-jeldi");
+    p.setWorkAuthorization("H1B");
+    assertEquals(0, p.computeCompleteness(), "LinkedIn URL + work authorisation alone score 0");
+
+    p.setHeadline("Java Developer");
+    p.setSummary("17 years of experience");
+    p.setLocation("Reston, VA");
+    p.setWorkType("REMOTE");
+    p.setSalaryMin(150_000);
+    p.setSalaryMax(200_000);
+    assertEquals(100, p.computeCompleteness(),
+        "the five core fields still score exactly 100 with LinkedIn URL + work authorisation set");
+  }
+
+  @Test
   void skillsAndClockDateAddNoCompletenessPoints() {
     Profile p = profile();
     p.setSkills(List.of("Java", "LangGraph"));

@@ -17,10 +17,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { workAuthorizationLabel } from "@/lib/jobs";
 import { Check, X } from "lucide-react";
 import { latestResume } from "@/lib/dashboard";
 
 const CURRENCIES = ["USD", "EUR", "GBP", "INR", "CAD", "AUD"];
+
+// W6 work-authorisation values; "" = Prefer not to say (field omitted).
+const WORK_AUTHORIZATIONS = ["US_CITIZEN", "GREEN_CARD", "EAD", "H1B", "OTHER"] as const;
 
 const schema = z.object({
   headline: z.string().min(2, "Add a headline"),
@@ -32,6 +36,17 @@ const schema = z.object({
   visibility: z.enum(["PRIVATE", "PUBLIC"]),
   currency: z.string().regex(/^[A-Z]{3}$/, "Pick a currency"),
   h1bClockStartDate: z.string().optional(),
+  // W6: empty = unset; a set value must be an http(s) URL (server also
+  // validates and returns INVALID_LINKEDIN_URL as a 400).
+  linkedinUrl: z
+    .string()
+    .max(300, "LinkedIn URL must be 300 characters or fewer")
+    .refine(
+      (v) => v.trim() === "" || /^https?:\/\/.+/.test(v.trim()),
+      "Enter a valid URL starting with http:// or https://",
+    )
+    .optional(),
+  workAuthorization: z.enum(["", ...WORK_AUTHORIZATIONS]).optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -47,6 +62,9 @@ export default function ProfilePage() {
   const { data: resumes } = useResumes();
   const update = useUpdateProfile();
   const [skills, setSkills] = useState<string[]>([]);
+  // W6: the API's validation message (e.g. INVALID_LINKEDIN_URL) is
+  // shown inline as well as in the toast, so it is not lost.
+  const [saveError, setSaveError] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
@@ -65,6 +83,8 @@ export default function ProfilePage() {
       visibility: "PRIVATE",
       currency: "USD",
       h1bClockStartDate: "",
+      linkedinUrl: "",
+      workAuthorization: "",
     },
   });
 
@@ -81,6 +101,12 @@ export default function ProfilePage() {
           profile.visibility === "PUBLIC" ? "PUBLIC" : "PRIVATE",
         currency: profile.currency || "USD",
         h1bClockStartDate: profile.h1bClockStartDate ?? "",
+        linkedinUrl: profile.linkedinUrl ?? "",
+        workAuthorization:
+          profile.workAuthorization &&
+          WORK_AUTHORIZATIONS.includes(profile.workAuthorization)
+            ? profile.workAuthorization
+            : "",
       });
       setSkills(profile.skills ?? []);
     }
@@ -95,6 +121,7 @@ export default function ProfilePage() {
       : CURRENCIES;
 
   async function onSubmit(data: z.output<typeof schema>) {
+    setSaveError(null);
     try {
       await update.mutateAsync({
         headline: data.headline,
@@ -111,12 +138,24 @@ export default function ProfilePage() {
         ...(data.h1bClockStartDate
           ? { h1bClockStartDate: data.h1bClockStartDate }
           : {}),
+        // W6: empty LinkedIn URL = leave unchanged; a value is sent as-is
+        // and the API validates it (INVALID_LINKEDIN_URL on a bad URL).
+        ...(data.linkedinUrl?.trim()
+          ? { linkedinUrl: data.linkedinUrl.trim() }
+          : {}),
+        // W6: "Prefer not to say" ("") = leave unchanged; a chosen value
+        // is sent and the API validates it (INVALID_WORK_AUTHORIZATION).
+        ...(data.workAuthorization
+          ? { workAuthorization: data.workAuthorization }
+          : {}),
       });
       toast({ title: "Profile saved", variant: "success" });
     } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Try again.";
+      setSaveError(message);
       toast({
         title: "Could not save profile",
-        description: err instanceof ApiError ? err.message : "Try again.",
+        description: message,
         variant: "error",
       });
     }
@@ -175,6 +214,29 @@ export default function ProfilePage() {
                     <dt className="text-xs text-slate-500">Visibility</dt>
                     <dd className="text-slate-900">{profile.visibility}</dd>
                   </div>
+                  <div>
+                    <dt className="text-xs text-slate-500">LinkedIn</dt>
+                    <dd className="text-slate-900">
+                      {profile.linkedinUrl ? (
+                        <a
+                          href={profile.linkedinUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="break-all text-indigo-700 hover:underline"
+                        >
+                          {profile.linkedinUrl}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500">Work authorisation</dt>
+                    <dd className="text-slate-900">
+                      {workAuthorizationLabel(profile.workAuthorization)}
+                    </dd>
+                  </div>
                 </dl>
                 <div>
                   <p className="text-xs text-slate-500">Skills</p>
@@ -192,7 +254,7 @@ export default function ProfilePage() {
                   <p className="text-xs text-slate-500">Linked resume</p>
                   {resume ? (
                     <p className="mt-1 text-slate-900">
-                      {resume.fileName}{" "}
+                      {resume.label ?? resume.fileName}{" "}
                       <Badge
                         variant={resume.status === "READY" ? "default" : "secondary"}
                         className="ml-1"
@@ -273,6 +335,28 @@ export default function ProfilePage() {
                       {errors.currency && <p className="text-xs text-rose-600">{errors.currency.message}</p>}
                     </div>
                   </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="linkedinUrl">LinkedIn URL</Label>
+                      <Input
+                        id="linkedinUrl"
+                        type="url"
+                        placeholder="https://www.linkedin.com/in/your-name"
+                        {...register("linkedinUrl")}
+                      />
+                      {errors.linkedinUrl && <p className="text-xs text-rose-600">{errors.linkedinUrl.message}</p>}
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="workAuthorization">Work authorisation</Label>
+                      <Select id="workAuthorization" {...register("workAuthorization")}>
+                        <option value="">Prefer not to say</option>
+                        {WORK_AUTHORIZATIONS.map((v) => (
+                          <option key={v} value={v}>{workAuthorizationLabel(v)}</option>
+                        ))}
+                      </Select>
+                      {errors.workAuthorization && <p className="text-xs text-rose-600">{errors.workAuthorization.message}</p>}
+                    </div>
+                  </div>
                   <div className="flex flex-col gap-1.5">
                     <Label>Skills</Label>
                     <SkillsEditor value={skills} onChange={setSkills} />
@@ -297,6 +381,9 @@ export default function ProfilePage() {
                       </p>
                     </div>
                   </div>
+                  {saveError && (
+                    <p role="alert" className="text-sm text-rose-600">{saveError}</p>
+                  )}
                   <Button type="submit" disabled={isSubmitting} className="w-fit">
                     {isSubmitting ? "Saving…" : "Save profile"}
                   </Button>
@@ -309,7 +396,8 @@ export default function ProfilePage() {
             <CardHeader>
               <CardTitle>Completeness</CardTitle>
               <CardDescription>
-                Score from the server — skills and the clock date add no points.
+                Score from the server — skills, the clock date, LinkedIn URL
+                and work authorisation add no points.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">

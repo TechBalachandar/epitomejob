@@ -29,12 +29,13 @@ public class JobController {
       @RequestParam(required = false) String location,
       @RequestParam(required = false) String workType,
       @RequestParam(required = false) Boolean sponsorsH1b,
+      @RequestParam(required = false) String source,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size) {
     int safePage = Math.max(0, page);
     int safeSize = Math.min(AppConstants.Job.MAX_PAGE_SIZE, Math.max(1, size));
     return JobPageResponse.from(service.search(query, location, workType, sponsorsH1b,
-        PageRequest.of(safePage, safeSize)));
+        source, PageRequest.of(safePage, safeSize)));
   }
 
   @GetMapping("/{id}")

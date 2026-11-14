@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError, useApplyJob, useJobs, useResumes, useSaveJob } from "@/lib/api";
 import { formatPostedAt, formatSalary } from "@/lib/jobs";
+import { JobSource } from "@/components/job-source";
 import { toast } from "@/lib/toast-store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,11 +19,13 @@ export default function JobsPage() {
   const [query, setQuery] = useState("");
   const [location, setLocation] = useState("");
   const [workType, setWorkType] = useState("ALL");
+  const [source, setSource] = useState("ALL");
   const [sponsorsOnly, setSponsorsOnly] = useState(false);
   const { data: page, isLoading, isError } = useJobs({
     query,
     location,
     workType,
+    source,
     sponsorsH1b: sponsorsOnly,
     size: 20,
   });
@@ -94,6 +97,15 @@ export default function JobsPage() {
             <option value="Hybrid">Hybrid</option>
             <option value="Onsite">Onsite</option>
           </Select>
+          <Select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Job source" className="sm:w-40">
+            <option value="ALL">All sources</option>
+            <option value="LINKEDIN">LinkedIn</option>
+            <option value="INDEED">Indeed</option>
+            <option value="MONSTER">Monster</option>
+            <option value="NAUKRI">Naukri</option>
+            <option value="COMPANY">Company site</option>
+            <option value="SEED">Seed</option>
+          </Select>
           <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
             <input
               type="checkbox"
@@ -147,6 +159,7 @@ export default function JobsPage() {
                   {formatSalary(job.salaryMin, job.salaryMax)}
                 </span>
                 {job.sponsorsH1b && <Badge variant="success">Sponsors H-1B</Badge>}
+                <JobSource job={job} />
                 <span className="text-xs text-slate-400">
                   {formatPostedAt(job.postedAt)}
                 </span>
@@ -182,6 +195,7 @@ export default function JobsPage() {
                 <p className="text-xs text-slate-400">
                   {selected.role} · {formatPostedAt(selected.postedAt)}
                 </p>
+                <JobSource job={selected} />
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
