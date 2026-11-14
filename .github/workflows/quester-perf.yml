@@ -1,0 +1,185 @@
+# Quester — nightly performance testing (Quester job C).
+#
+# Runs 6:30 AM ET (11:30 UTC), after the 6:00 AM nightly QA report and
+# before the 7:00 AM triage, and appends a Performance section to the same
+# qa-reports/<date>.md file nightly.yml writes. Same `[skip ci]` commit
+# pattern as nightly.yml (plus a pull --rebase first, so a late nightly
+# commit does not clobber this one or vice versa).
+#
+# SERVICES STARTED — READ THIS BEFORE CALLING IT "THE FULL STACK":
+# The brief says "only postgres + rustfs + backend + agent-brain". That set
+# cannot serve Lighthouse (no web UI) and compose pulls in transitive
+# depends_on services anyway, so the job starts the minimal set that can
+# actually run both legs:
+#   k6 leg:     postgres, rustfs, backend, agent-brain
+#               (+ eureka and temporal, pulled in by depends_on: backend
+#               needs eureka started; agent-brain needs temporal healthy)
+#   LHCI leg:   gateway, web (+ redis, pulled in by the gateway)
+# Deliberately NOT started: kafka, elasticsearch, kibana, fluent-bit,
+# jaeger, temporal-ui, temporal-worker, mcp-server. 9 of 17 services.
+# Two compose facts that bite in CI and are handled here:
+#   - pgdata/rustfsdata are EXTERNAL volumes (backend_pgdata /
+#     backend_rustfsdata); they must be created before `up` or compose fails.
+#   - backend is internal-only (:8081, no published port); k6 hits the
+#     gateway at :8080, the public entry point, exactly like the web BFF.
+#   - agent-brain /health is 200 even when Ollama is down, and Ollama is
+#     NOT in compose — so the coach journey measures routing/availability
+#     (200 or 503), not LLM latency. See k6/coach.js.
+name: Quester perf (nightly)
+
+on:
+  schedule:
+    - cron: "30 11 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  perf:
+    name: k6 + Lighthouse
+    runs-on: ubuntu-latest
+    outputs:
+      k6_failed: ${{ steps.k6.outputs.failed }}
+      lhci_failed: ${{ steps.lhci.outputs.failed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the report step runs `git pull --rebase`, which
+          # is unreliable on the default shallow (depth-1) checkout.
+          fetch-depth: 0
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Create external compose volumes
+        run: |
+          docker volume create backend_pgdata || true
+          docker volume create backend_rustfsdata || true
+
+      - name: Start API services (postgres, rustfs, backend, agent-brain)
+        run: |
+          # Also starts eureka + temporal via depends_on. Backend and
+          # agent-brain Dockerfiles are self-contained multi-stage builds
+          # (mvn package / pip install inside the image); no prebuilt jar
+          # or venv is needed.
+          docker compose up -d --build postgres rustfs backend agent-brain
+
+      - name: Start web services (gateway, web)
+        run: |
+          # Also starts redis via the gateway's depends_on. Needed only
+          # for the Lighthouse leg; the k6 leg does not use it.
+          docker compose up -d --build gateway web
+
+      - name: Wait for services to be healthy
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/actuator/health >/dev/null 2>&1 \
+              && curl -fsS http://localhost:3000/login >/dev/null 2>&1 \
+              && curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
+              echo "Gateway, web and agent-brain are up after ${i} x 5s"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Services did not become healthy in 5 minutes"
+          docker compose ps
+          docker compose logs --tail=50 backend agent-brain gateway web || true
+          exit 1
+
+      - name: Install k6
+        run: |
+          # Official k6 apt repo (https://dl.k6.io/deb). Latest stable;
+          # scripts use only stable k6 APIs (http, check, sleep, metrics).
+          curl -fsS https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq k6
+          k6 version
+
+      - name: Install Lighthouse CI + Chromium
+        run: |
+          npm install -g @lhci/cli
+          # Playwright's Chromium is the Chrome binary LHCI uses; the repo
+          # already depends on Playwright, so no new browser source.
+          npx -y playwright@latest install --with-deps chromium
+          echo "CHROME_PATH=$(find "${HOME}/.cache/ms-playwright" -name chrome -type f -path '*chrome-linux*' | head -n 1)" >> "$GITHUB_ENV"
+
+      - name: Run k6 journeys
+        id: k6
+        run: |
+          # run-all.sh records per-journey PASS/FAIL and exits non-zero if
+          # any journey failed. That must NOT fail this step yet: the
+          # report step below must still run and commit the numbers.
+          set +e
+          bash k6/run-all.sh
+          K6_RC=$?
+          set -e
+          echo "failed=$([ "${K6_RC}" -ne 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "k6 exit code: ${K6_RC} (recorded; job fails at the end if true)"
+
+      - name: Run Lighthouse CI
+        id: lhci
+        env:
+          CHROME_PATH: ${{ env.CHROME_PATH }}
+        run: |
+          # LHCI asserts live in lighthouse/lighthouserc.json (perf >= 80,
+          # accessibility 100 = zero violations). A failing assert must
+          # NOT fail this step yet: the report step must still run.
+          set +e
+          npx -y @lhci/cli autorun --config=lighthouse/lighthouserc.json
+          LHCI_RC=$?
+          set -e
+          echo "failed=$([ "${LHCI_RC}" -ne 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "LHCI exit code: ${LHCI_RC} (recorded; job fails at the end if true)"
+
+      - name: Append Performance section to QA report
+        if: always()
+        run: |
+          REPORT_DATE=$(TZ=America/New_York date +%F)
+          python3 scripts/perf-report.py \
+            --k6-dir k6-results \
+            --lhci-dir lighthouse-results \
+            --date "${REPORT_DATE}" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --commit "${GITHUB_SHA}" \
+            --out "qa-reports/${REPORT_DATE}.md"
+
+      - name: Commit QA report
+        if: always()
+        run: |
+          # Same [skip ci] pattern as nightly.yml, plus a pull --rebase
+          # first: nightly.yml may have committed its 6:00 AM report after
+          # this job checked out, and the perf section must append to it,
+          # not clobber it.
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase || true
+          git add qa-reports/
+          if git diff --cached --quiet; then
+            echo "No QA report changes to commit"
+          else
+            git commit -m "Perf report $(TZ=America/New_York date +%F) [skip ci]"
+            git push || { git pull --rebase && git push; }
+          fi
+
+      - name: Stop services
+        if: always()
+        run: |
+          docker compose down || true
+          docker volume rm backend_pgdata backend_rustfsdata || true
+
+      - name: Fail the job if perf regressed
+        if: always()
+        run: |
+          if [ "${{ steps.k6.outputs.failed }}" = "true" ]; then
+            echo "k6 journey(s) failed thresholds — see the Performance section of qa-reports/$(TZ=America/New_York date +%F).md"
+            exit 1
+          fi
+          if [ "${{ steps.lhci.outputs.failed }}" = "true" ]; then
+            echo "Lighthouse CI assertions failed — see the Performance section of qa-reports/$(TZ=America/New_York date +%F).md"
+            exit 1
+          fi
+          echo "Perf green: k6 thresholds and Lighthouse assertions passed."

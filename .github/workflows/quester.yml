@@ -1,0 +1,293 @@
+# Quester — run automation after every commit (Quester job B).
+#
+# WHY A SEPARATE WORKFLOW (not an extension of ci.yml):
+# ci.yml is the fast PR/push gate. Adding issue-filing + board side effects
+# to it would change its failure semantics and slow the PR path. Quester is
+# a separate reporting layer: it runs the SAME five suites with the SAME
+# steps/commands as ci.yml + nightly.yml (copied verbatim below — it does
+# not change what any suite asserts), then triages the result:
+#   - failure -> create/update one `qa-agent` issue (GITHUB_TOKEN) and,
+#     if the PROJECTS_PAT secret is set, add it to the EpitomeJob board.
+#   - green push to main -> close any open Quester failure issues.
+# No secret is required for the test runs themselves. Board writes are the
+# only step that needs a secret, and they are skipped gracefully without it.
+#
+# Base verified 2026-11-14: main @ 3855e76; ci.yml (3 jobs: backend,
+# python agent-brain tests, web unit+E2E) and nightly.yml (5 suites +
+# qa-reports/<date>.md writer, `[skip ci]` commit) read from the live repo.
+# The five suites here are nightly.yml's five: backend, python-tests,
+# python-evals, web-unit, web-e2e. ci.yml's single `web` job is split into
+# web-unit and web-e2e so failures are reported per suite; the steps inside
+# each are copied from ci.yml unchanged (typecheck + unit in web-unit,
+# Playwright install + E2E in web-e2e). Evals are NOT in ci.yml — they are
+# copied from nightly.yml (judge skips without Ollama, same as nightly).
+name: Quester
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: quester-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+      - name: Run backend tests + coverage gate
+        working-directory: backend
+        run: mvn -B verify
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-surefire-reports
+          path: backend/target/surefire-reports/
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-jacoco-report
+          path: backend/target/site/jacoco/
+
+  python-tests:
+    name: Agent-brain tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install agent-brain dependencies
+        run: pip install -r agent-brain/requirements.txt
+      - name: Run agent-brain tests
+        run: python -m pytest agent-brain/tests -q
+
+  python-evals:
+    name: Agent-brain evals
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install agent-brain dependencies
+        run: pip install -r agent-brain/requirements.txt
+      - name: Run agent-brain evals
+        run: python -m pytest agent-brain/evals -q
+
+  web-unit:
+    name: Web unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Set up pnpm 10
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Install web dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        working-directory: web
+        run: pnpm exec tsc --noEmit
+      - name: Run web unit tests
+        working-directory: web
+        run: pnpm test
+
+  web-e2e:
+    name: Web E2E tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Set up pnpm 10
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Install web dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Run web E2E tests
+        working-directory: web
+        run: pnpm test:e2e
+
+  triage:
+    name: Quester triage (issue + board)
+    needs: [backend, python-tests, python-evals, web-unit, web-e2e]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Compute suite results
+        id: suites
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          needs = json.loads(os.environ["NEEDS_JSON"])
+          order = ["backend", "python-tests", "python-evals", "web-unit", "web-e2e"]
+          # "cancelled" counts as failed: the suite did not pass.
+          failed = [j for j in order if needs.get(j, {}).get("result") not in ("success", "skipped")]
+          passed = [j for j in order if needs.get(j, {}).get("result") == "success"]
+          skipped = [j for j in order if needs.get(j, {}).get("result") == "skipped"]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"failed={','.join(failed)}\n")
+              f.write(f"passed={','.join(passed)}\n")
+              f.write(f"skipped={','.join(skipped)}\n")
+              f.write(f"any_failed={'true' if failed else 'false'}\n")
+              f.write(f"all_green={'true' if not failed and not skipped else 'false'}\n")
+          print(f"failed={failed} passed={passed} skipped={skipped}")
+          PY
+
+      - name: Find first failing step
+        id: firstfail
+        if: steps.suites.outputs.any_failed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          STEP=$(gh run view "${GITHUB_RUN_ID}" --json jobs \
+            --jq '[.jobs[] | select(.conclusion == "failure") | .steps[]? | select(.conclusion == "failure") | .name] | first // "unknown — see run link"' 2>/dev/null || echo "unknown — see run link")
+          echo "step=${STEP}" >> "$GITHUB_OUTPUT"
+          echo "First failing step: ${STEP}"
+
+      - name: File or update failure issue
+        id: issue
+        if: steps.suites.outputs.any_failed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FAILED: ${{ steps.suites.outputs.failed }}
+          PASSED: ${{ steps.suites.outputs.passed }}
+          FIRST_STEP: ${{ steps.firstfail.outputs.step }}
+        run: |
+          # The qa-agent label already exists in this repo (verified
+          # 2026-11-14: at least one issue carries it). This create is
+          # belt-and-braces only and must never fail the job.
+          gh label create qa-agent --color "B60205" \
+            --description "Created by Quester (automated QA) for CI failures" 2>/dev/null || true
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          COMMIT_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            SCOPE="PR #${{ github.event.pull_request.number }}"
+            TITLE="[Quester] CI failure PR #${{ github.event.pull_request.number }} ${SHORT_SHA} — ${FAILED}"
+          else
+            SCOPE="main"
+            TITLE="[Quester] CI failure ${SHORT_SHA} — ${FAILED}"
+          fi
+          # One issue per failing commit: if an open qa-agent issue already
+          # carries this SHA in its title, comment on it instead of filing
+          # a duplicate.
+          EXISTING=$(gh issue list --label qa-agent --state open --limit 100 \
+            --json number,title --jq ".[] | select(.title | contains(\"${SHORT_SHA}\")) | .number" | head -n 1)
+          BODY_FILE=$(mktemp)
+          cat > "${BODY_FILE}" <<EOF
+          ## Quester CI failure
+          - Commit: ${GITHUB_SHA} (${COMMIT_URL})
+          - Scope: ${SCOPE}
+          - Run: ${RUN_URL}
+          - Failing suites: ${FAILED}
+          - Passing suites: ${PASSED:-none}
+          - First failing step: ${FIRST_STEP:-unknown — see run link}
+          - Trigger: ${GITHUB_EVENT_NAME}
+          EOF
+          if [ -n "${EXISTING}" ]; then
+            echo "Updating existing issue #${EXISTING} for ${SHORT_SHA}"
+            {
+              echo "## Quester CI failure — new failing run"
+              echo ""
+              cat "${BODY_FILE}"
+            } > "${BODY_FILE}.comment"
+            gh issue comment "${EXISTING}" --body-file "${BODY_FILE}.comment" || echo "::warning::Could not comment on issue #${EXISTING} (fork PRs have a read-only token)."
+            ISSUE_URL=$(gh issue view "${EXISTING}" --json url --jq .url)
+          else
+            echo "Creating new issue: ${TITLE}"
+            ISSUE_URL=$(gh issue create --title "${TITLE}" --label qa-agent \
+              --body-file "${BODY_FILE}" 2>/dev/null) || {
+              echo "::warning::Could not create the qa-agent issue (fork PRs have a read-only token). Failing suites: ${FAILED}. Run: ${RUN_URL}"
+              ISSUE_URL=""
+            }
+          fi
+          echo "issue_url=${ISSUE_URL}" >> "$GITHUB_OUTPUT"
+          echo "Issue: ${ISSUE_URL:-none (creation failed — see warning above)}"
+
+      - name: Add issue to EpitomeJob project board
+        if: steps.suites.outputs.any_failed == 'true' && steps.issue.outputs.issue_url != '' && env.PROJECTS_PAT != ''
+        env:
+          PROJECTS_PAT: ${{ secrets.PROJECTS_PAT }}
+        run: |
+          # Projects v2 board writes need a PAT — GITHUB_TOKEN cannot do
+          # them. Project: https://github.com/users/TechBalachandar/projects/1
+          GH_TOKEN="${PROJECTS_PAT}" gh project item-add 1 --owner TechBalachandar \
+            --url "${{ steps.issue.outputs.issue_url }}"
+
+      - name: Note skipped board update (no PROJECTS_PAT)
+        if: steps.suites.outputs.any_failed == 'true' && steps.issue.outputs.issue_url != '' && env.PROJECTS_PAT == ''
+        env:
+          PROJECTS_PAT: ${{ secrets.PROJECTS_PAT }}
+        run: |
+          echo "::notice title=Quester board update::PROJECTS_PAT secret is not set — skipping board update. The qa-agent issue was still created; add it to the EpitomeJob board manually or set the PROJECTS_PAT secret (see QUESTER.md)."
+
+      - name: Close failure issues on green push to main
+        if: steps.suites.outputs.all_green == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Only a green push to main closes failure issues. A green PR run
+          # closes nothing: it proves the branch, not main.
+          NUMBERS=$(gh issue list --label qa-agent --state open --limit 100 \
+            --json number,title --jq '.[] | select(.title | startswith("[Quester] CI failure")) | .number')
+          if [ -z "${NUMBERS}" ]; then
+            echo "No open Quester failure issues."
+            exit 0
+          fi
+          for N in ${NUMBERS}; do
+            gh issue comment "$N" --body "Quester run is green on main: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} (commit ${GITHUB_SHA}). Closing this failure issue."
+            gh issue close "$N" --reason completed
+            echo "Closed #${N}"
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Quester triage"
+            echo ""
+            echo "- Commit: ${GITHUB_SHA}"
+            echo "- Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "- Failed suites: ${{ steps.suites.outputs.failed }}"
+            echo "- Passed suites: ${{ steps.suites.outputs.passed }}"
+            echo "- Issue: ${{ steps.issue.outputs.issue_url }}"
+          } >> "$GITHUB_STEP_SUMMARY"
