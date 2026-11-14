@@ -1,9 +1,11 @@
 """The six specialist nodes (contract §6).
 
 Each specialist is an async function ``(state, ctx) -> partial state``.
-Specialists NEVER write anything except through the MCP tools in
-``app.mcp.tools`` — and those tools never write without proposing a Java
-approval first. Agents never approve each other; only the user approves.
+Specialists NEVER write anything except through the coach tools in
+``app.coach_tools`` (relocated verbatim from ``app.mcp.tools`` in Phase
+5B; the MCP server now lives in the separate mcp-service) — and those
+tools never write without proposing a Java approval first. Agents never
+approve each other; only the user approves.
 
 ``learning`` is a CURATOR ONLY: it returns links from a static curated list
 (the same sources as the W0 learning page) matched to the requested topic.
@@ -18,8 +20,8 @@ from dataclasses import dataclass
 from app.graph.state import ChatAction, Citation, CoachState
 from app.java_client import JavaClient
 from app.llm import OllamaClient
-from app.mcp import tools as mcp_tools
-from app.mcp.tools import ToolContext
+from app import coach_tools as mcp_tools  # Phase 5B: was `app.mcp.tools`
+from app.coach_tools import ToolContext  # Phase 5B: was `app.mcp.tools`
 from app.rag.store import RagStore
 
 logger = logging.getLogger(__name__)

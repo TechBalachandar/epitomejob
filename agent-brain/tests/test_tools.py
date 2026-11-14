@@ -1,10 +1,14 @@
-"""MCP tool tests: arg validation + approval-proposal-only writes."""
+"""Coach tool tests: arg validation + approval-proposal-only writes.
+
+Phase 5B: the functions moved from app.mcp.tools to app.coach_tools
+(relocated verbatim); these tests are unchanged apart from the import.
+"""
 
 import json
 
 import pytest
 
-from app.mcp.tools import (
+from app.coach_tools import (  # Phase 5B: was `app.mcp.tools`
     ToolContext,
     ToolError,
     apply_to_job,

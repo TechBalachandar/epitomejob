@@ -5,8 +5,9 @@
 # cryptography==48.0.1 pin (newest version with a universal2 wheel for the
 # user's Intel Mac; on linux/amd64 it resolves to a manylinux wheel).
 # Default CMD runs the FastAPI app on :8000; compose overrides the command
-# for mcp-server (python -m app.mcp.server, :8001) and temporal-worker
-# (python -m app.temporal.worker, no HTTP port).
+# for temporal-worker (python -m app.temporal.worker, no HTTP port).
+# Phase 5B: the mcp-server compose override is GONE — the FastMCP server
+# moved to the separate mcp-service (own Dockerfile, :8001).
 
 FROM python:3.12-slim
 RUN apt-get update \

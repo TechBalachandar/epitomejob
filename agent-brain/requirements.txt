@@ -7,7 +7,6 @@ langgraph==1.2.20
 httpx==0.28.1
 psycopg[binary]==3.3.9
 temporalio==1.36.0
-fastmcp==4.1.8
 pydantic==2.14.3
 pydantic-settings==2.16.2
 pytest==9.2.0

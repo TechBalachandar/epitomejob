@@ -14,7 +14,6 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     agent_brain_port: int = 8000
-    mcp_port: int = 8001
     java_base_url: str = "http://localhost:8080"
     ollama_base_url: str = "http://localhost:11434"
     ollama_chat_model: str = "llama3.1:8b"

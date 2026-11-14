@@ -1,0 +1,19 @@
+# EpitomeJob Phase 5B mcp-service — only what the MCP path needs.
+# Pins carried over verbatim from agent-brain/requirements.txt @ b59dc45.
+# Dropped vs agent-brain: langgraph (supervisor stays in agent-brain),
+# temporalio (worker stays in agent-brain), fastapi (the MCP server is a
+# Starlette app served by uvicorn via FastMCP; FastAPI is never imported).
+# Kept: pytest/pytest-asyncio — mcp-service ships its own smoke test.
+uvicorn==0.54.0
+httpx==0.28.1
+psycopg[binary]==3.3.9
+fastmcp==4.1.8
+pydantic==2.14.3
+pydantic-settings==2.16.2
+pytest==9.2.0
+pytest-asyncio==1.5.0
+# Pin: cryptography 49+ ships ARM-only macOS wheels (no Intel wheel), so an
+# Intel Mac falls back to a source build that needs OpenSSL + pkg-config.
+# 48.0.1 is the newest version with a universal2 wheel, and it satisfies
+# authlib's cryptography>=45.0.1 requirement.
+cryptography==48.0.1
