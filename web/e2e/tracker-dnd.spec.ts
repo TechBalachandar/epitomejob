@@ -1,9 +1,11 @@
 import { test, expect, type Page } from "@playwright/test";
 
-// Tracker drag-and-drop: cards move between kanban columns with native
-// HTML5 drag-and-drop (Jira / Azure Boards style), no status dropdown.
-// The BFF (/api/*) is stubbed with page.route — the app talks to the stubs
-// exactly as it would to the real backend through the BFF proxy.
+// Tracker drag-and-drop: cards move between kanban columns with ONE
+// Pointer Events drag (mouse AND touch), started from the card's grip
+// handle — no HTML5 drag-and-drop (mobile browsers never fire it from a
+// finger) and no status dropdown. The BFF (/api/*) is stubbed with
+// page.route — the app talks to the stubs exactly as it would to the real
+// backend through the BFF proxy.
 
 const SESSION = {
   accessToken: "e2e-access-token",
@@ -126,6 +128,54 @@ test.describe("Tracker drag and drop", () => {
     });
   }
 
+  /** Centres of the grip handle and the target column. */
+  async function dragPoints(page: Page, cardId: string, columnStatus: string) {
+    const grip = page.getByTestId(`tracker-grip-${cardId}`);
+    const gripBox = await grip.boundingBox();
+    const column = page.getByTestId(`tracker-column-${columnStatus}`);
+    const columnBox = await column.boundingBox();
+    if (!gripBox || !columnBox) throw new Error("drag targets not found");
+    return {
+      from: { x: gripBox.x + gripBox.width / 2, y: gripBox.y + gripBox.height / 2 },
+      to: { x: columnBox.x + columnBox.width / 2, y: columnBox.y + columnBox.height / 2 },
+    };
+  }
+
+  /** Mouse drag from the grip: mouse events fire pointer events, so this
+   * exercises the same Pointer Events path as a real mouse drag. */
+  async function mouseDragCard(page: Page, cardId: string, columnStatus: string) {
+    const { from, to } = await dragPoints(page, cardId, columnStatus);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 12 });
+    await page.mouse.up();
+  }
+
+  /** Real touch drag: CDP touch events, which Chromium turns into
+   * pointer events with pointerType "touch" — the same input a finger on
+   * mobile Chrome / Safari produces. Only meaningful on the touch project. */
+  async function touchDragCard(page: Page, cardId: string, columnStatus: string) {
+    const cdp = await page.context().newCDPSession(page);
+    const { from, to } = await dragPoints(page, cardId, columnStatus);
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: from.x, y: from.y, id: 1 }],
+    });
+    for (let i = 1; i <= 10; i++) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [
+          {
+            x: from.x + ((to.x - from.x) * i) / 10,
+            y: from.y + ((to.y - from.y) * i) / 10,
+            id: 1,
+          },
+        ],
+      });
+    }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  }
+
   test("drag a card from Saved to Applied moves it and fires the update", async ({
     page,
   }) => {
@@ -133,16 +183,34 @@ test.describe("Tracker drag and drop", () => {
     await gotoViaNav(page, "Tracker");
     // Generous timeout: the dev server compiles the route on first request.
     await expect(column(page, "Saved").getByRole("heading", { name: "Agentic AI Engineer" })).toBeVisible({ timeout: 15_000 });
-    // No status dropdown anymore — the card moves by dragging only.
-    await expect(page.getByLabel(/Move .* to another column/)).toHaveCount(0);
+    // No status dropdown anymore — the card moves by dragging its handle only.
+    await expect(page.locator("select")).toHaveCount(0);
+    await expect(page.getByTestId("tracker-grip-trk-1")).toBeVisible();
 
     const putPromise = page.waitForRequest(
       (req) => req.url().includes("/api/tracker/trk-1") && req.method() === "PUT",
     );
-    await page.dragAndDrop(
-      '[data-testid="tracker-card-trk-1"]',
-      '[data-testid="tracker-column-APPLIED"]',
+    await mouseDragCard(page, "trk-1", "APPLIED");
+    const put = await putPromise;
+    expect(put.postDataJSON()).toEqual({ status: "APPLIED" });
+
+    await expect(column(page, "Applied").getByRole("heading", { name: "Agentic AI Engineer" })).toBeVisible();
+    await expect(column(page, "Saved").getByRole("heading", { name: "Agentic AI Engineer" })).toHaveCount(0);
+  });
+
+  test("touch: drag a card from Saved to Applied on a touch screen", async ({
+    page,
+  }, testInfo) => {
+    // Only the mobile-390 project emulates touch (hasTouch: true).
+    test.skip(testInfo.project.name !== "mobile-390", "touch drag is only exercised on the touch project");
+    await login(page);
+    await gotoViaNav(page, "Tracker");
+    await expect(column(page, "Saved").getByRole("heading", { name: "Agentic AI Engineer" })).toBeVisible({ timeout: 15_000 });
+
+    const putPromise = page.waitForRequest(
+      (req) => req.url().includes("/api/tracker/trk-1") && req.method() === "PUT",
     );
+    await touchDragCard(page, "trk-1", "APPLIED");
     const put = await putPromise;
     expect(put.postDataJSON()).toEqual({ status: "APPLIED" });
 
@@ -160,10 +228,7 @@ test.describe("Tracker drag and drop", () => {
     page.on("request", (req) => {
       if (req.url().includes("/api/tracker/trk-1") && req.method() === "PUT") putCount += 1;
     });
-    await page.dragAndDrop(
-      '[data-testid="tracker-card-trk-1"]',
-      '[data-testid="tracker-column-SAVED"]',
-    );
+    await mouseDragCard(page, "trk-1", "SAVED");
     await page.waitForTimeout(500);
     expect(putCount).toBe(0);
     await expect(column(page, "Saved").getByRole("heading", { name: "Agentic AI Engineer" })).toBeVisible();

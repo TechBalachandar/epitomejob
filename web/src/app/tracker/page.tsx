@@ -26,6 +26,10 @@ const STATUS_BADGE: Record<TrackerStatus, "secondary" | "default" | "success" | 
   REJECTED: "destructive",
 };
 
+function columnLabel(status: TrackerStatus): string {
+  return COLUMNS.find((c) => c.status === status)?.label ?? status;
+}
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
     month: "short",
@@ -34,13 +38,24 @@ function formatDate(iso: string): string {
   });
 }
 
+type DragState = {
+  card: TrackerDto;
+  pointerId: number;
+  x: number;
+  y: number;
+};
+
 export default function TrackerPage() {
   const { data: cards, isLoading, isError } = useTracker();
   const update = useUpdateTracker();
   const remove = useDeleteTracker();
   const [notesDraft, setNotesDraft] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Set<string>>(new Set());
-  const [draggedId, setDraggedId] = useState<string | null>(null);
+  // Pointer Events drag (mouse AND touch): the drag starts only from a
+  // card's grip handle, so touching the card body still scrolls the page.
+  // No HTML5 drag-and-drop here — mobile browsers never fire it from a
+  // finger, and there is no keyboard drag in this slice.
+  const [drag, setDrag] = useState<DragState | null>(null);
   const [dropTarget, setDropTarget] = useState<TrackerStatus | null>(null);
 
   async function move(card: TrackerDto, status: TrackerStatus) {
@@ -52,24 +67,40 @@ export default function TrackerPage() {
     }
   }
 
-  function handleDragStart(e: React.DragEvent, card: TrackerDto) {
-    e.dataTransfer.setData("text/plain", card.id);
-    e.dataTransfer.effectAllowed = "move";
-    setDraggedId(card.id);
-  }
-
-  function handleDragEnd() {
-    setDraggedId(null);
-    setDropTarget(null);
-  }
-
-  function handleDrop(e: React.DragEvent, status: TrackerStatus) {
+  function handleGripPointerDown(e: React.PointerEvent, card: TrackerDto) {
+    // touch-action: none on the grip (see className) stops the browser
+    // taking the gesture over for scrolling/zooming; preventDefault stops
+    // text selection and the native drag. Works for mouse and touch alike —
+    // the handlers never branch on pointerType.
     e.preventDefault();
-    const id = e.dataTransfer.getData("text/plain");
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDrag({ card, pointerId: e.pointerId, x: e.clientX, y: e.clientY });
+  }
+
+  function handleGripPointerMove(e: React.PointerEvent) {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-column]");
+    const status = el?.getAttribute("data-column") as TrackerStatus | null;
+    setDrag({ ...drag, x: e.clientX, y: e.clientY });
+    setDropTarget(status ?? null);
+  }
+
+  function endDrag(e: React.PointerEvent) {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    // Recompute the target from the pointer position instead of trusting
+    // state: the last pointermove may not have flushed before pointerup.
+    const el = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-column]");
+    const target = el?.getAttribute("data-column") as TrackerStatus | null;
+    const card = drag.card;
+    setDrag(null);
     setDropTarget(null);
-    setDraggedId(null);
-    const card = (cards ?? []).find((c) => c.id === id);
-    if (card) void move(card, status);
+    if (target && target !== card.status) void move(card, target);
+  }
+
+  function cancelDrag(e: React.PointerEvent) {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    setDrag(null);
+    setDropTarget(null);
   }
 
   async function saveNotes(card: TrackerDto) {
@@ -100,8 +131,8 @@ export default function TrackerPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Tracker</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Your applications across the pipeline. Drag cards between columns
-          to move them, edit their notes, or remove them.
+          Your applications across the pipeline. Drag cards by their handle
+          between columns to move them, edit their notes, or remove them.
         </p>
       </div>
 
@@ -120,21 +151,9 @@ export default function TrackerPage() {
             <div
               key={status}
               role="list"
+              data-column={status}
               data-testid={`tracker-column-${status}`}
               aria-label={`${label} column, drop cards here to move them`}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-                setDropTarget(status);
-              }}
-              onDragLeave={(e) => {
-                // Only clear when the pointer truly leaves the column, not
-                // when it moves between children inside it.
-                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-                  setDropTarget((t) => (t === status ? null : t));
-                }
-              }}
-              onDrop={(e) => handleDrop(e, status)}
               className={`flex flex-col gap-3 rounded-xl p-3 transition-colors ${
                 isDropTarget ? "bg-indigo-50 ring-2 ring-indigo-500" : "bg-slate-100"
               }`}
@@ -148,24 +167,29 @@ export default function TrackerPage() {
               )}
               {columnCards.map((card) => {
                 const isEditing = editing.has(card.id);
-                const isDragging = draggedId === card.id;
+                const isDragging = drag?.card.id === card.id;
                 return (
                   <Card
                     key={card.id}
                     role="listitem"
                     data-testid={`tracker-card-${card.id}`}
-                    draggable
-                    aria-label={`${card.title} in ${label} column. Drag to move to another column.`}
-                    onDragStart={(e) => handleDragStart(e, card)}
-                    onDragEnd={handleDragEnd}
-                    className={isDragging ? "cursor-grabbing opacity-50" : "cursor-grab"}
+                    aria-label={`${card.title} in ${label} column. Drag using the handle to move to another column.`}
+                    className={isDragging ? "opacity-50" : undefined}
                   >
                     <CardHeader className="pb-2">
                       <div className="flex items-start gap-1">
-                        <GripVertical
-                          className="mt-0.5 h-4 w-4 shrink-0 text-slate-400"
-                          aria-hidden
-                        />
+                        <span
+                          data-testid={`tracker-grip-${card.id}`}
+                          title="Drag to move"
+                          onPointerDown={(e) => handleGripPointerDown(e, card)}
+                          onPointerMove={handleGripPointerMove}
+                          onPointerUp={endDrag}
+                          onPointerCancel={cancelDrag}
+                          onLostPointerCapture={cancelDrag}
+                          className="mt-0.5 inline-flex shrink-0 cursor-grab touch-none rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
+                        >
+                          <GripVertical className="h-4 w-4" aria-hidden />
+                        </span>
                         <div className="min-w-0">
                           <CardTitle className="text-sm leading-snug">{card.title}</CardTitle>
                           <p className="text-xs text-slate-500">{card.company}</p>
@@ -240,6 +264,26 @@ export default function TrackerPage() {
           );
         })}
       </div>
+
+      {drag && (
+        <div
+          aria-hidden
+          className="pointer-events-none fixed z-50 w-64 rounded-lg border border-indigo-200 bg-white p-3 shadow-xl"
+          style={{
+            left: drag.x,
+            top: drag.y,
+            transform: "translate(-50%, calc(-100% - 12px))",
+          }}
+        >
+          <p className="text-sm font-semibold leading-snug text-slate-900">{drag.card.title}</p>
+          <p className="text-xs text-slate-500">{drag.card.company}</p>
+          {dropTarget && dropTarget !== drag.card.status && (
+            <p className="mt-1 text-xs font-medium text-indigo-700">
+              Move to {columnLabel(dropTarget)}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

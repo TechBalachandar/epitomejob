@@ -534,10 +534,18 @@ test.describe("W1 smoke", () => {
     await login(page);
     await gotoViaNav(page, "Tracker");
     await expect(page.getByText("Agentic AI Engineer").first()).toBeVisible();
-    await page.dragAndDrop(
-      '[data-testid="tracker-card-trk-1"]',
-      '[data-testid="tracker-column-APPLIED"]',
-    );
+    // Pointer Events drag from the grip handle (mouse events fire pointer
+    // events, so this exercises the same path as a real drag).
+    const grip = page.getByTestId("tracker-grip-trk-1");
+    const gripBox = await grip.boundingBox();
+    const columnBox = await page
+      .getByTestId("tracker-column-APPLIED")
+      .boundingBox();
+    if (!gripBox || !columnBox) throw new Error("drag targets not found");
+    await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(columnBox.x + columnBox.width / 2, columnBox.y + columnBox.height / 2, { steps: 12 });
+    await page.mouse.up();
     await expect(page.getByText("Agentic AI Engineer").first()).toBeVisible();
     // The card now sits in the Applied column (2 Applied cards would mean a dup).
     const appliedColumn = page.locator("div.rounded-xl", { has: page.getByRole("heading", { name: "Applied", exact: true }) });
