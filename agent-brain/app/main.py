@@ -299,3 +299,15 @@ async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(
         status_code=500, content={"code": "INTERNAL_ERROR", "message": str(exc)[:300]}
     )
+
+
+# -- Quester (chief QA tester agent) ---------------------------------------
+# BEGIN QUESTER WIRING (Quester worker, 2026-11-14). Delimited block: the
+# parallel Resume Builder work may also edit this file — keep this block
+# intact and re-apply it after their change if it conflicts. Quester's
+# only touchpoints here are this import and the include_router line below;
+# all Quester code lives under app/quester/.
+from app.quester.router import router as quester_router
+
+app.include_router(quester_router)
+# END QUESTER WIRING
