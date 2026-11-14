@@ -2,6 +2,7 @@ package com.epitomejob.resumebuilder;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpServer;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -151,7 +152,7 @@ class ResumeBuilderJourneyIT {
     assertThat(templates.getBody()).contains("modern", "classic", "minimal");
 
     // 2. Parse the PDF fixture.
-    byte[] pdf = com.epitomejob.resumebuilder.service.ResumeParseServiceTest.pdfFixture();
+    byte[] pdf = TestFixtures.pdfFixture();
     MultiValueMap<String, Object> multipart = new LinkedMultiValueMap<>();
     multipart.add("file", new ByteArrayResource(pdf) {
       @Override
