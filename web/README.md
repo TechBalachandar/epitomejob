@@ -166,18 +166,23 @@ user's **real first resume id** when one exists.
 
 ## Run it (backend first!)
 
-```bash
-# 1. Backend (from the repo root)
-cd backend
-docker compose up -d          # Postgres + RustFS (object storage)
-mvn spring-boot:run           # wait for "Started EpitomeJobApplication"
+Full stack (recommended) — from the repo root, see the root `README.md`:
+`docker compose up -d --build` (18 services; the web BFF talks to the
+backend through the gateway on `:8080`). Open http://localhost:3000.
 
-# 2. Web (from the repo root)
+Web dev mode — stop the compose web service first, or `:3000` is taken:
+
+```bash
+docker compose stop web
 cd web
 cp .env.example .env.local    # only if you need a non-default backend URL
 pnpm install
 pnpm dev                      # http://localhost:3000
 ```
+
+On Windows run the same commands in Git Bash (Node 22 LTS + pnpm 10 on
+`PATH`). Mac: Node 26 + `npm install -g pnpm@10`; `source ~/.zshrc` first
+in a fresh terminal if `pnpm` is not found.
 
 Seeded login: `dev@example.com` / `DevPass123!` (dev-only seed account).
 Registering a new user also works — use a fresh unique email each run.
@@ -185,13 +190,13 @@ Registering a new user also works — use a fresh unique email each run.
 ## Tests
 
 ```bash
-pnpm test          # Vitest — 43 tests (auth store + API client incl. refresh/retry + W2 jobs/matches/tracker/interviews/apply flow)
-pnpm test:e2e      # Playwright — 20 tests (Chromium + 390px mobile); stubs the
+pnpm test          # Vitest — 175 tests (auth store + API client incl. refresh/retry + W2 jobs/matches/tracker/interviews/apply flow + Builder BFF routes + server-api)
+pnpm test:e2e      # Playwright (Chromium + 390px mobile); stubs the
                    # BFF with page.route, so no real backend is needed
 pnpm lint          # 0 errors (1 pre-existing informational warning on the
                    # profile page's watch() — same as W0, harmless)
 npx tsc --noEmit   # strict, clean
-pnpm build         # all 12 pages + 22 BFF routes
+pnpm build         # all pages + BFF routes (incl. the 7 Builder routes)
 ```
 
 ## W2 gate checklist (stubbed BFF + real-backend checks)
@@ -237,5 +242,5 @@ Real-backend checks (need the user's Mac, backend running first):
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `API_URL` | — | Backend base URL for the BFF (server-side; wins when set) |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8080` | Backend base URL fallback for the BFF |
+| `API_URL` | — | Backend base URL for the BFF (server-side; wins when set). In the full stack this is the gateway, `http://gateway:8080` |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8080` | Backend base URL fallback for the BFF (the gateway, in the full stack) |

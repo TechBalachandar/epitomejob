@@ -1,19 +1,29 @@
-# EpitomeJob — Phase 0 Backend (Modular Monolith, Clean Architecture)
+# EpitomeJob — Backend (Modular Monolith, Layered Architecture)
 
-**What this is:** Phase 0 of the Best Execution Plan — login, profile, resume upload, approval gate + SSE. One Spring Boot deployable. Microservices come in Phase 5; do not split this yet.
+**What this is:** Phase 0 of the Best Execution Plan — login, profile, resume upload, approval gate + SSE. One Spring Boot deployable. The Phase 5 strangler split is **done** on main (gateway, Eureka, MCP split, Resume Builder service) — this monolith is now an Eureka client behind the gateway; see the root `README.md` for the current architecture.
 
 **Stack (all pinned, see pom.xml):** Java 21, Spring Boot 3.5.4, Spring Security 6, JJWT 0.12.6, Flyway, Postgres 16 + pgvector, RustFS (S3-compatible), PDFBox 3.0.2, JUnit 5, Mockito, Testcontainers, JaCoCo, springdoc OpenAPI 2.8.13.
 
-**Prerequisites on your Mac:** Java 21, Maven 3.9+, Docker Desktop (for Postgres + RustFS only).
+**Prerequisites:** Java 21, Maven 3.9+, Docker Desktop. Mac: Java/Maven in `~/tools` (`source ~/.zshrc` first in a fresh terminal). Windows: Temurin 21 MSI + Chocolatey `choco install maven`, in Git Bash.
 
 ## Run it
+
+Two modes. Full stack (recommended) — from the repo root, see the root
+`README.md`: `docker compose up -d --build` (18 services; the backend is
+internal on `:8081`, the gateway on `:8080` is the only external entry).
+Standalone dev — the backend alone on `:8080` (stop the gateway first, or
+`:8080` is taken):
+
 ```bash
+cd backend
 cp .env.example .env        # then edit APP_JWT_SECRET (64+ hex chars)
 docker compose up -d        # Postgres :5432, RustFS :9000 / console :9001
 export $(grep -v '^#' .env | xargs)
 mvn spring-boot:run         # app on http://localhost:8080
 ```
 API docs: http://localhost:8080/swagger-ui.html (OpenAPI JSON at /v3/api-docs).
+
+On Windows run the same commands in Git Bash (Maven + Java 21 on `PATH`).
 
 ## Tests & coverage
 ```bash
@@ -22,7 +32,8 @@ open target/site/jacoco/index.html   # coverage report
 ```
 Coverage gate (enforced in CI, build fails below it): **≥80% lines, ≥70% branches** overall. Security-critical paths (auth, tokens, approval decisions) are covered near 100%. Integration tests run the full gate journey against real Postgres + RustFS via Testcontainers (Docker must be running).
 
-## Phase 0 gate (run these, in order)
+## Phase 0 gate (run these, in order — against the gateway `:8080` in the
+full stack, or the standalone backend `:8080` with the gateway stopped)
 ```bash
 # 1. Health
 curl http://localhost:8080/actuator/health
@@ -114,8 +125,14 @@ is no JPA entity for it, the agent-brain reads/writes it with raw SQL.
 > (`GateJourneyIT`, `W2JourneyIT`) use the same `pgvector/pgvector:pg16`
 > image, so V4 runs there too.
 
-## Layout — clean architecture, module first
+## Layout — layered architecture, module first
 Modules stay the top-level boundary (one package per bounded context, so a module can be lifted out whole in the Phase 5 strangler split). Inside each module, strict layers: `controller` → `service` → `repository` → `model`, with `dto` at the boundary. Controllers never return entities — only DTOs. Shared cross-cutting code lives in `common/`.
+
+> Honest note: this is layered Spring architecture, not strict Clean
+> Architecture — the model *is* the JPA entity (`@Entity` /
+> `jakarta.persistence` annotations in it), so there is no framework-free
+> domain layer yet. A clean/hexagonal refactor (pure domain + ports and
+> adapters) is a possible follow-up, one module at a time.
 
 ```
 src/main/java/com/epitomejob/
@@ -153,4 +170,4 @@ src/test/java/com/epitomejob/
 - Dev seed user + dev JWT secret are dev-only. Change them before any shared deployment.
 - Resume parsing is PDF-only in Phase 0 (DOCX comes in Phase 3). No refresh-token flow UI yet — the API exists, the mobile client wires it in Phase 1.
 - No rate limiting on `/auth/login` yet (brute-force protection is a Phase 1 item; the `login_attempts` table is reserved for it).
-- No LangGraph / MCP server in Java — W3 adds only the Java side of RAG (Flyway V4 `rag.documents` + the coach proxy); the LangGraph supervisor, MCP server, and RAG reads/writes live in the Python agent-brain, not here.
+- No LangGraph / MCP server in Java — the LangGraph supervisor, MCP server (split out as `mcp-service/` in Phase 5B), and RAG reads/writes live in the Python agent-brain, not here; W3 added only the Java side of RAG (Flyway V4 `rag.documents` + the coach proxy).
