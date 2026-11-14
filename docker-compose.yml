@@ -190,6 +190,44 @@ services:
       retries: 20
       start_period: 30s
 
+  resume-builder:
+    build:
+      context: ./resume-builder-service
+      dockerfile: Dockerfile
+    image: epitomejob/resume-builder-service:rb1
+    # Internal only — no published port. The gateway (8080) is the only
+    # external entry point; the jar listens on 8082 (application.yml).
+    expose:
+      - "8082"
+    environment:
+      # Same shared Postgres instance as the monolith, but a separate
+      # Flyway schema: resume_builder (see resume-builder-service
+      # src/main/resources/application.yml + db/migration/V1). No new
+      # database to create, no change to the postgres service.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/epitomejob
+      SPRING_DATASOURCE_USERNAME: epitomejob
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-epitomejob-dev}
+      APP_JWT_SECRET: ${APP_JWT_SECRET:-dev-only-secret-change-me-0123456789abcdef}
+      SERVER_PORT: "8082"
+      EUREKA_URL: http://eureka:8761/eureka
+      # Direct service-to-service calls (same 5A decision as agent-brain):
+      # the gateway is for external/client traffic only.
+      JAVA_BASE_URL: http://backend:8081
+      AGENT_BRAIN_URL: http://agent-brain:8000
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_SERVICE_NAME: resume-builder-service
+    depends_on:
+      eureka:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
   agent-brain:
     build:
       context: ./agent-brain

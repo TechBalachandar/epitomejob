@@ -39,6 +39,14 @@ public class FallbackController {
             traceId(exchange))));
   }
 
+  @RequestMapping("/fallback/resume-builder")
+  public Mono<ResponseEntity<ApiError>> resumeBuilderFallback(ServerWebExchange exchange) {
+    return Mono.just(ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+        .body(new ApiError("SERVICE_UNAVAILABLE",
+            "The Resume Builder is temporarily unavailable. Please try again.",
+            traceId(exchange))));
+  }
+
   private static String traceId(ServerWebExchange exchange) {
     return exchange.getRequest().getHeaders()
         .getFirst(TraceConstants.REQUEST_ID_HEADER);

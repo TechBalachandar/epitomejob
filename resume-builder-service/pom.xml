@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.5.4</version><relativePath/></parent>
+  <groupId>com.epitomejob</groupId><artifactId>resume-builder-service</artifactId><version>0.1.0</version>
+  <name>resume-builder-service</name>
+  <description>EpitomeJob Resume Builder microservice (RB1): parse, template, edit, export and save-to-profile resumes. Split out of the monolith; the monolith is untouched.</description>
+  <properties>
+    <java.version>21</java.version>
+    <jjwt.version>0.12.6</jjwt.version>
+    <jacoco.version>0.8.12</jacoco.version>
+    <!-- Spring Cloud BOM 2025.0.3 — same pin as the monolith (backend/pom.xml),
+         verified on Maven Central 2026-11-14. It manages the Eureka client
+         (spring-cloud-netflix 4.3.3), so no explicit version below. -->
+    <spring-cloud.version>2025.0.3</spring-cloud.version>
+    <!-- Boot 3.5.4 pins Testcontainers 1.21.3, whose docker-java talks API 1.32;
+         Docker Engine 29 refuses anything below 1.44. Same 1.21.4 pin + the
+         docker-java.properties on the test classpath as the monolith. -->
+    <testcontainers.version>1.21.4</testcontainers.version>
+    <!-- Apache POI 5.3.0 — verified on Maven Central 2026-11-14 (HEAD 200 on
+         poi / poi-ooxml / poi-scratchpad 5.3.0 POMs). Latest 5.x is 5.5.1 and
+         latest overall is 6.0.0; 5.3.0 is pinned deliberately (known-good
+         with Java 21, matches the brief). -->
+    <poi.version>5.3.0</poi.version>
+    <!-- OpenHTMLToPDF 1.0.10 — verified on Maven Central 2026-11-14 (HEAD 200;
+         also the <latest>/<release> in its maven-metadata.xml). -->
+    <openhtmltopdf.version>1.0.10</openhtmltopdf.version>
+  </properties>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-dependencies</artifactId>
+        <version>${spring-cloud.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+  <dependencies>
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-jpa</artifactId></dependency>
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-security</artifactId></dependency>
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-validation</artifactId></dependency>
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
+    <!-- Eureka client ONLY (same pattern as the monolith's 5A patch). No
+         @EnableEurekaClient needed: Boot 3.5 + Cloud 2025 auto-configures
+         the client from the classpath. -->
+    <dependency><groupId>org.springframework.cloud</groupId><artifactId>spring-cloud-starter-netflix-eureka-client</artifactId></dependency>
+    <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-core</artifactId></dependency>
+    <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-database-postgresql</artifactId></dependency>
+    <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId><scope>runtime</scope></dependency>
+    <dependency><groupId>io.jsonwebtoken</groupId><artifactId>jjwt-api</artifactId><version>${jjwt.version}</version></dependency>
+    <dependency><groupId>io.jsonwebtoken</groupId><artifactId>jjwt-impl</artifactId><version>${jjwt.version}</version><scope>runtime</scope></dependency>
+    <dependency><groupId>io.jsonwebtoken</groupId><artifactId>jjwt-jackson</artifactId><version>${jjwt.version}</version><scope>runtime</scope></dependency>
+    <!-- PDFBox 3.0.2 — same version as the monolith's resume parsing
+         (backend/.../resume/service/ResumeService.java uses Loader.loadPDF).
+         DECLARED BEFORE openhtmltopdf ON PURPOSE: OpenHTMLToPDF 1.0.10 was
+         compiled against PDFBox 2.0.24 / FontBox 2.0.24 (see its parent POM:
+         <pdfbox.version>2.0.24</pdfbox.version>). Maven mediation picks the
+         nearest definition, so the direct 3.0.2 dep wins over the transitive
+         2.0.24 one, and the same ordering makes FontBox 3.0.2 win the
+         depth-tie. MAC GATE: the export tests (ExportServiceTest +
+         ResumeBuilderJourneyIT) MUST pass on the Mac — if OpenHTMLToPDF
+         1.0.10 calls a PDFBox/FontBox API that changed in 3.x, the failure
+         will be a loud NoSuchMethodError there, not silent corruption.
+         Fallback if that happens: render PDF with PDFBox 3 directly
+         (ExportService.exportPdf) instead of OpenHTMLToPDF. -->
+    <dependency><groupId>org.apache.pdfbox</groupId><artifactId>pdfbox</artifactId><version>3.0.2</version></dependency>
+    <!-- Apache POI: DOCX (XWPF) + legacy DOC (HWPF). -->
+    <dependency><groupId>org.apache.poi</groupId><artifactId>poi</artifactId><version>${poi.version}</version></dependency>
+    <dependency><groupId>org.apache.poi</groupId><artifactId>poi-ooxml</artifactId><version>${poi.version}</version></dependency>
+    <dependency><groupId>org.apache.poi</groupId><artifactId>poi-scratchpad</artifactId><version>${poi.version}</version></dependency>
+    <!-- PDF export: renders the filled template HTML. See the PDFBox note above. -->
+    <dependency><groupId>com.openhtmltopdf</groupId><artifactId>openhtmltopdf-pdfbox</artifactId><version>${openhtmltopdf.version}</version></dependency>
+    <dependency><groupId>io.micrometer</groupId><artifactId>micrometer-tracing-bridge-otel</artifactId></dependency>
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>com.h2database</groupId><artifactId>h2</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>
+  </dependencies>
+  <build><plugins>
+    <plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin>
+    <plugin>
+      <groupId>org.jacoco</groupId><artifactId>jacoco-maven-plugin</artifactId><version>${jacoco.version}</version>
+      <executions>
+        <execution><id>prepare-agent</id><goals><goal>prepare-agent</goal></goals></execution>
+        <execution>
+          <id>report</id><phase>verify</phase><goals><goal>report</goal></goals>
+        </execution>
+        <execution>
+          <id>check</id><phase>verify</phase><goals><goal>check</goal></goals>
+          <configuration><rules><rule><element>BUNDLE</element><limits>
+            <limit><counter>LINE</counter><value>COVEREDRATIO</value><minimum>0.80</minimum></limit>
+            <limit><counter>BRANCH</counter><value>COVEREDRATIO</value><minimum>0.70</minimum></limit>
+          </limits></rule></rules></configuration>
+        </execution>
+      </executions>
+    </plugin>
+  </plugins></build>
+</project>

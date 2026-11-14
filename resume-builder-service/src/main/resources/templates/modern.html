@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" />
+<style>
+  body { font-family: sans-serif; color: #222; margin: 40px; font-size: 12pt; line-height: 1.45; }
+  .header { background: #1a5276; color: #fff; padding: 20px 24px; margin: -40px -40px 20px -40px; }
+  .header h1 { margin: 0; font-size: 22pt; }
+  .header p { margin: 4px 0 0 0; font-size: 10pt; }
+  h2 { color: #1a5276; border-bottom: 2px solid #1a5276; padding-bottom: 3px; font-size: 13pt; text-transform: uppercase; letter-spacing: 1px; }
+  .job h3 { margin: 10px 0 0 0; font-size: 11pt; }
+  .dates { color: #666; margin: 0; font-size: 10pt; }
+  ul { margin: 4px 0 10px 0; }
+  .skill { display: inline-block; background: #eaf2f8; color: #1a5276; border-radius: 3px; padding: 2px 8px; margin: 2px; font-size: 10pt; }
+</style>
+</head>
+<body>
+<div class="header"><h1>{{fullName}}</h1><p>{{email}} | {{phone}} | {{linkedin}} | {{location}}</p></div>
+<h2>Summary</h2><p>{{summary}}</p>
+<h2>Experience</h2>{{experienceHtml}}
+<h2>Education</h2>{{educationHtml}}
+<h2>Skills</h2><p>{{skillsHtml}}</p>
+</body>
+</html>

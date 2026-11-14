@@ -1,0 +1,101 @@
+# EpitomeJob resume-builder-service (RB1).
+#
+# PORT: 8082 everywhere (jar default here, compose SERVER_PORT, k8s
+# containerPort). Backend is 8081, gateway 8080 — no clash.
+# DB: the SHARED Postgres instance (same host as the monolith), but a
+# SEPARATE Flyway schema `resume_builder` — own tables, own
+# flyway_schema_history, zero changes to the monolith's V1–V8 migrations
+# (they live in the epitomejob schema / default schema of the backend).
+# A dedicated database is a one-line change (SPRING_DATASOURCE_URL to
+# jdbc:postgresql://postgres:5432/resume_builder + a CREATE DATABASE step);
+# the schema split was chosen so RB1 works on the existing volume with no
+# postgres-service change.
+server:
+  port: 8082
+
+spring:
+  application:
+    name: resume-builder-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/epitomejob}
+    username: ${SPRING_DATASOURCE_USERNAME:epitomejob}
+    password: ${SPRING_DATASOURCE_PASSWORD:epitomejob-dev}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: resume_builder
+        format_sql: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    schemas: resume_builder
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+eureka:
+  # Same pattern as the monolith's 5A patch (backend/.../application.yml):
+  # defaultZone defaults to localhost so manual dev still works;
+  # compose/k8s set EUREKA_URL=http://eureka:8761/eureka.
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+
+app:
+  jwt:
+    # Same env var + dev default as the monolith and the gateway.
+    # DEV ONLY — set APP_JWT_SECRET to a long random value anywhere shared.
+    # Key derivation (JwtTokenService) must match the monolith/gateway:
+    # raw UTF-8 bytes of this string (NOT Base64-decoded). Mac gate: mint
+    # a token via the gateway and call GET /resume-builder/templates.
+    secret: ${APP_JWT_SECRET:dev-only-secret-change-me-0123456789abcdef}
+  # Direct service-to-service URLs (same 5A decision as agent-brain: the
+  # gateway fronts clients only; internal traffic stays direct).
+  agent-brain:
+    url: ${AGENT_BRAIN_URL:http://localhost:8000}
+  java-base-url: ${JAVA_BASE_URL:http://localhost:8081}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    com.epitomejob: INFO
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+  datasource:
+    url: jdbc:h2:mem:resume-builder-test;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: sa
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        hbm2ddl:
+          create_namespaces: true
+  flyway:
+    enabled: false
+eureka:
+  # The test suite must NEVER touch a Eureka server.
+  client:
+    register-with-eureka: false
+    fetch-registry: false
+app:
+  jwt:
+    secret: test-only-secret-change-me-0123456789abcdef0123456789abcdef

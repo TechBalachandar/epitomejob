@@ -21,6 +21,12 @@
 #                     at b59dc45 — /billing/plans is the live plans endpoint.
 #                     This route is forward-compatible: it 404s from the
 #                     backend until a standalone plans endpoint exists.)
+#   /resume-builder/** Resume Builder service (RB1 split). lb://resume-builder-service.
+#                     Endpoints: GET /templates, POST /parse, POST|GET|PUT
+#                     /documents[/...], POST /documents/{id}/copilot|export|
+#                     save-to-profile. JWT via the JwtAuthFilter GlobalFilter
+#                     (same as every non-/auth route); ownership re-checked
+#                     by the service on every document.
 #   /mcp/**           MCP service (Phase 5B split). Static URI, NOT lb://:
 #                     the Python mcp-service does not register with Eureka
 #                     (no Java client), so discovery cannot resolve it.
@@ -428,6 +434,34 @@ spring:
                   - 502
                   - 503
                   - 504
+        - id: resume-builder
+          uri: lb://resume-builder-service
+          predicates:
+            - Path=/resume-builder/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                rate-limiter: "#{@redisRateLimiter}"
+                key-resolver: "#{@userKeyResolver}"
+            - name: Retry
+              args:
+                retries: 3
+                methods: GET
+                series: SERVER_ERROR
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 1000ms
+                  factor: 2
+                  basedOnPreviousValue: true
+            - name: CircuitBreaker
+              args:
+                name: resume-builder
+                fallbackUri: forward:/fallback/resume-builder
+                statusCodes:
+                  - 500
+                  - 502
+                  - 503
+                  - 504
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -488,6 +522,14 @@ resilience4j:
         waitDurationInOpenState: 30s
         permittedNumberOfCallsInHalfOpenState: 3
         automaticTransitionFromOpenToHalfOpenEnabled: true
+      resume-builder:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
   timelimiter:
     instances:
       backend:
@@ -496,12 +538,18 @@ resilience4j:
       mcp-service:
         timeoutDuration: 3s
         cancelRunningFuture: true
+      resume-builder:
+        timeoutDuration: 3s
+        cancelRunningFuture: true
   bulkhead:
     instances:
       backend:
         maxConcurrentCalls: 100
         maxWaitDuration: 0
       mcp-service:
+        maxConcurrentCalls: 50
+        maxWaitDuration: 0
+      resume-builder:
         maxConcurrentCalls: 50
         maxWaitDuration: 0
   threadpoolbulkhead:

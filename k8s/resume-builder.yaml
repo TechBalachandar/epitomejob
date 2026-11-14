@@ -1,0 +1,119 @@
+# EpitomeJob RB1 — resume-builder-service (Spring Boot).
+# Listens on 8082 (application.yml; backend is 8081, gateway 8080).
+# Registers with Eureka as resume-builder-service (EUREKA_URL); the
+# gateway routes /resume-builder/** to it via lb://. The Service is
+# ClusterIP — external traffic reaches it via the gateway (8080) only.
+# Env names match application.yml; secrets come from epitomejob-secrets.
+# All ConfigMap keys below already exist in k8s/configmap.yaml (5A):
+# SPRING_DATASOURCE_URL/USERNAME, EUREKA_URL, JAVA_BASE_URL,
+# AGENT_BRAIN_URL, OTEL_EXPORTER_OTLP_ENDPOINT — no ConfigMap change.
+# The datasource points at the shared epitomejob database; isolation is
+# the resume_builder Flyway schema (see V1 migration), not a new database.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resume-builder
+  namespace: epitomejob
+  labels:
+    app.kubernetes.io/name: epitomejob
+    app.kubernetes.io/component: resume-builder
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: resume-builder
+  template:
+    metadata:
+      labels:
+        app: resume-builder
+        app.kubernetes.io/name: epitomejob
+        app.kubernetes.io/component: resume-builder
+    spec:
+      containers:
+        - name: resume-builder
+          image: epitomejob/resume-builder-service:rb1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8082
+              name: http
+          env:
+            - name: SPRING_DATASOURCE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: SPRING_DATASOURCE_URL
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: SPRING_DATASOURCE_USERNAME
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: epitomejob-secrets
+                  key: POSTGRES_PASSWORD
+            - name: APP_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: epitomejob-secrets
+                  key: APP_JWT_SECRET
+            - name: SERVER_PORT
+              value: "8082"
+            - name: EUREKA_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: EUREKA_URL
+            - name: JAVA_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: JAVA_BASE_URL
+            - name: AGENT_BRAIN_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: AGENT_BRAIN_URL
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: OTEL_EXPORTER_OTLP_ENDPOINT
+            - name: OTEL_SERVICE_NAME
+              value: "resume-builder-service"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8082
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8082
+            initialDelaySeconds: 90
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: resume-builder
+  namespace: epitomejob
+  labels:
+    app.kubernetes.io/name: epitomejob
+    app.kubernetes.io/component: resume-builder
+spec:
+  type: ClusterIP
+  selector:
+    app: resume-builder
+  ports:
+    - port: 8082
+      targetPort: 8082
+      name: http

@@ -38,7 +38,7 @@ command -v kind >/dev/null 2>&1 || { echo "ERROR: kind not found — install kin
 command -v kubectl >/dev/null 2>&1 || { echo "ERROR: kubectl not found — install kubectl v1.37.2 (see INSTALL-W4.md)." >&2; exit 1; }
 docker info >/dev/null 2>&1 || { echo "ERROR: Docker daemon is not running — start Docker Desktop first." >&2; exit 1; }
 
-for f in backend/Dockerfile agent-brain/Dockerfile web/Dockerfile gateway-service/Dockerfile eureka-server/Dockerfile mcp-service/Dockerfile k8s kind/cluster.yaml; do
+for f in backend/Dockerfile agent-brain/Dockerfile web/Dockerfile gateway-service/Dockerfile eureka-server/Dockerfile mcp-service/Dockerfile resume-builder-service/Dockerfile k8s kind/cluster.yaml; do
   [ -f "${f}" ] || { echo "ERROR: missing ${f} — apply the W4 stack zip first (it adds the Dockerfiles); gateway-service, eureka-server and mcp-service come from the 5A/5B workers." >&2; exit 1; }
 done
 
@@ -64,6 +64,8 @@ echo "Building epitomejob/eureka-server:5a ..."
 docker build -f eureka-server/Dockerfile -t epitomejob/eureka-server:5a .
 echo "Building epitomejob/mcp-service:5b ..."
 docker build -t epitomejob/mcp-service:5b ./mcp-service
+echo "Building epitomejob/resume-builder-service:rb1 ..."
+docker build -t epitomejob/resume-builder-service:rb1 ./resume-builder-service
 
 # --- 3. Load images into kind (temporal-worker still reuses agent-brain;
 #     mcp-server is its own image since 5B)
@@ -74,6 +76,7 @@ kind load docker-image epitomejob/web:w4 --name "${CLUSTER}"
 kind load docker-image epitomejob/gateway-service:5a --name "${CLUSTER}"
 kind load docker-image epitomejob/eureka-server:5a --name "${CLUSTER}"
 kind load docker-image epitomejob/mcp-service:5b --name "${CLUSTER}"
+kind load docker-image epitomejob/resume-builder-service:rb1 --name "${CLUSTER}"
 
 # --- 4. Apply manifests (namespace first: apply -f k8s/ has no order guarantee)
 echo "Applying manifests..."
@@ -99,6 +102,7 @@ kubectl rollout status daemonset/fluent-bit -n "${NAMESPACE}" --timeout=300s
 kubectl rollout status deployment/backend -n "${NAMESPACE}" --timeout=600s
 kubectl rollout status deployment/agent-brain -n "${NAMESPACE}" --timeout=300s
 kubectl rollout status deployment/mcp-server -n "${NAMESPACE}" --timeout=300s
+kubectl rollout status deployment/resume-builder -n "${NAMESPACE}" --timeout=300s
 kubectl rollout status deployment/temporal-worker -n "${NAMESPACE}" --timeout=300s
 kubectl rollout status deployment/web -n "${NAMESPACE}" --timeout=300s
 
@@ -133,6 +137,7 @@ echo "  kubectl port-forward -n epitomejob svc/elasticsearch 9200:9200  # ES: ht
 echo "  kubectl port-forward -n epitomejob svc/temporal-ui 8233:8233  # Temporal UI: http://localhost:8233"
 echo "  kubectl port-forward -n epitomejob svc/agent-brain 8000:8000  # agent-brain: http://localhost:8000/health"
 echo "  kubectl port-forward -n epitomejob svc/mcp-server 8001:8001   # MCP Inspector: http://localhost:8001/sse"
+echo "  kubectl port-forward -n epitomejob svc/resume-builder 8082:8082  # resume-builder (direct): http://localhost:8082/actuator/health"
 echo "  kubectl port-forward -n epitomejob svc/rustfs 9000:9000 9001:9001  # S3 API + console"
 echo "  kubectl port-forward -n epitomejob svc/postgres 5432:5432      # psql (db epitomejob)"
 echo ""
