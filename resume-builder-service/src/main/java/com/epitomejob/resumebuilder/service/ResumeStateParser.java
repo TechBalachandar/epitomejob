@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -110,7 +111,12 @@ public class ResumeStateParser {
           && !line.contains("@") && !line.toLowerCase().contains("linkedin")
           && line.chars().noneMatch(Character::isDigit)
           && line.split("\\s+").length >= 2 && line.split("\\s+").length <= 5
-          && !line.contains("|")) {
+          && !line.contains("|")
+          // A name is a proper noun: every word capitalised. Without this,
+          // any 2-5 word lowercase line ("just some words") is misread as
+          // the contact name and unstructured text looks structured.
+          && Arrays.stream(line.split("\\s+"))
+              .allMatch(w -> !w.isEmpty() && Character.isUpperCase(w.charAt(0)))) {
         name = line;
       }
       if (location.isEmpty() && line.contains(",") && !line.contains("@")
