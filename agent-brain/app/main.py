@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 from app.auth import InvalidTokenError, JavaUnavailableError, validate_token
 from app.config import settings
+from app.graph.copilot import run_copilot
 from app.graph.supervisor import CoachDeps, run_coach
 from app.java_client import JavaClient
 from app.llm import OllamaClient
@@ -100,6 +101,35 @@ class RagIndexRequest(BaseModel):
 class RagQueryRequest(BaseModel):
     query: str
     topK: int = 5
+
+
+class CopilotRequest(BaseModel):
+    active_section: str
+    user_context: str
+    target_jd: str | None = None
+    resume_state: dict[str, object] = Field(default_factory=dict)
+
+
+class CopilotOptionOut(BaseModel):
+    option_id: int
+    angle_tag: str
+    content: list[str]
+    missing_placeholders: list[str] = []
+    ats_keywords_used: list[str] = []
+
+
+class CopilotRenderedPatchOut(BaseModel):
+    target_block_id: str
+    applied_content: str | None = None
+
+
+class CopilotResponse(BaseModel):
+    ui_message: str
+    active_section: str
+    action_type: str
+    options: list[CopilotOptionOut] = []
+    rendered_patch: CopilotRenderedPatchOut
+    suggested_next_step: str
 
 
 class RagChunkOut(BaseModel):
@@ -218,6 +248,38 @@ async def chat(req: ChatRequest, authorization: str | None = Header(default=None
         return JSONResponse(
             status_code=500,
             content={"code": "CHAT_FAILED", "message": str(exc)[:300]},
+        )  # type: ignore[return-value]
+
+
+@app.post("/resume-builder/copilot", response_model=CopilotResponse)
+async def resume_builder_copilot(
+    req: CopilotRequest, authorization: str | None = Header(default=None)
+) -> CopilotResponse:
+    """Resume Builder Co-Pilot: one section/block at a time, 3-5 options.
+
+    Auth is the same path as /chat (Bearer token validated via Java
+    GET /profiles/me). The Java builder service forwards the user's token.
+    Ollama down never 500s: the Co-Pilot returns a safe REQUEST_METRICS
+    JSON instead.
+    """
+    if not req.active_section or not req.active_section.strip():
+        raise HTTPException(status_code=400, detail="active_section must not be empty")
+    if not req.user_context or not req.user_context.strip():
+        raise HTTPException(status_code=400, detail="user_context must not be empty")
+    token, user_id = await _authenticate(authorization)
+    _ = (token, user_id)
+    try:
+        result = await run_copilot(
+            req.active_section, req.user_context, req.target_jd, req.resume_state, get_llm()
+        )
+        return CopilotResponse(**result)  # type: ignore[arg-type]
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("resume-builder copilot failed")
+        return JSONResponse(
+            status_code=500,
+            content={"code": "COPILOT_FAILED", "message": str(exc)[:300]},
         )  # type: ignore[return-value]
 
 
