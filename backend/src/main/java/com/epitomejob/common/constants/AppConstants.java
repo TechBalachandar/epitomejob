@@ -114,9 +114,13 @@ public final class AppConstants {
     public static final String SOURCE_NAUKRI = "NAUKRI";
     public static final String SOURCE_COMPANY = "COMPANY";
     public static final String SOURCE_SEED = "SEED";
+    /** Live Adzuna API feed (replaces the W2 stub). Uppercase like the other
+     * sources; Job.setSource validates against SOURCES, and the source
+     * filter is case-insensitive. */
+    public static final String SOURCE_ADZUNA = "ADZUNA";
     public static final java.util.List<String> SOURCES = java.util.List.of(
         SOURCE_LINKEDIN, SOURCE_INDEED, SOURCE_MONSTER, SOURCE_NAUKRI,
-        SOURCE_COMPANY, SOURCE_SEED);
+        SOURCE_COMPANY, SOURCE_SEED, SOURCE_ADZUNA);
     private Job() {}
   }
 

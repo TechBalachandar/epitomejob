@@ -10,7 +10,9 @@ import org.springframework.context.annotation.Configuration;
 
 /**
  * Selects the job provider (W2 contract §8). Default is the seed provider;
- * set {@code epitomejob.jobs.provider=adzuna} to use the Adzuna stub.
+ * set {@code epitomejob.jobs.provider=adzuna} to use the live Adzuna API
+ * feed (requires ADZUNA_APP_ID + ADZUNA_APP_KEY). The compose stack sets
+ * it to adzuna via EPITOMEJOB_JOBS_PROVIDER.
  */
 @Configuration
 public class JobProviderConfig {
