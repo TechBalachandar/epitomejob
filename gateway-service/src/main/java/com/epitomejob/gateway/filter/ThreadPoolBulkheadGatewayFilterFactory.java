@@ -55,7 +55,15 @@ public class ThreadPoolBulkheadGatewayFilterFactory
     // Looked up once per route at startup; the "coach" instance config comes
     // from resilience4j.threadpoolbulkhead.instances.coach in application.yml.
     ThreadPoolBulkhead bulkhead = registry.bulkhead(config.getName());
-    return (exchange, chain) -> Mono.fromFuture(
-        bulkhead.executeSupplier(() -> chain.filter(exchange).toFuture()));
+    // executeSupplier wraps the supplier's result in a CompletionStage, and
+    // the supplier returns the chain's CompletableFuture — so the raw result
+    // is a nested CompletionStage<CompletableFuture<Void>>, which
+    // Mono.fromFuture cannot take (it needs a CompletableFuture, and the
+    // ThreadPoolBulkhead API has no executeCompletionStage to flatten it).
+    // thenCompose unwraps the inner future to CompletionStage<Void>, and
+    // Mono.fromCompletionStage lifts that to the Mono the filter must return.
+    return (exchange, chain) -> Mono.fromCompletionStage(
+        bulkhead.executeSupplier(() -> chain.filter(exchange).toFuture())
+            .thenCompose(future -> future));
   }
 }
