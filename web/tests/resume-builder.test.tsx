@@ -367,8 +367,9 @@ describe("builder API client", () => {
   });
 
   it("downloads the export blob with the server filename", async () => {
-    const blob = new Blob(["%PDF-fake"], { type: "application/pdf" });
-    const res = new Response(blob, {
+    // String body, not new Blob(...): a Response built from a jsdom Blob
+    // breaks under Node 22 — jsdom's Blob has no .stream() (CI #34).
+    const res = new Response("%PDF-fake", {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
@@ -468,7 +469,8 @@ describe("ResumeBuilderPage flow", () => {
         return jsonResponse(COPILOT);
       }
       if (url.startsWith("/api/resume-builder/documents/doc-1/export")) {
-        return new Response(new Blob(["%PDF-fake"], { type: "application/pdf" }), {
+        // String body, not new Blob(...) — see the note above (CI #34).
+        return new Response("%PDF-fake", {
           status: 200,
           headers: {
             "Content-Type": "application/pdf",
