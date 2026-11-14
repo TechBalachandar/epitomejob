@@ -44,6 +44,11 @@ export async function forwardResponse(upstream: Response): Promise<Response> {
   const headers = new Headers();
   const contentType = upstream.headers.get("content-type");
   if (contentType) headers.set("content-type", contentType);
+  // Export endpoints stream a file: keep the server filename + length.
+  const disposition = upstream.headers.get("content-disposition");
+  if (disposition) headers.set("content-disposition", disposition);
+  const contentLength = upstream.headers.get("content-length");
+  if (contentLength) headers.set("content-length", contentLength);
   return new Response(body, { status: upstream.status, headers });
 }
 

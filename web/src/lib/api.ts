@@ -11,16 +11,30 @@ import type {
   AuthResponse,
   BillingPlan,
   BillingStatus,
+  BuilderTemplate,
   CheckoutResult,
   CoachChatResponse,
+  CopilotRequest,
+  CopilotResponse,
   Entitlement,
   Notification,
   NotificationPage,
   Profile,
   ProfileUpdate,
+  ResumeBuilderDocument,
+  ResumeBuilderState,
   ResumeItem,
+  SaveToProfileResult,
   UnreadCount,
 } from "./types";
+import {
+  BUILTIN_TEMPLATES,
+  filenameFromContentDisposition,
+  normalizeBuilderDocument,
+  normalizeBuilderTemplates,
+  normalizeCopilotResponse,
+  normalizeSaveToProfile,
+} from "./resume-builder";
 
 import { buildJobsQuery } from "./jobs";
 import type {
@@ -573,4 +587,159 @@ export function useInterviewSession(id: string | null) {
     queryFn: () => apiFetch<SessionDto>(`/interviews/sessions/${id}`),
     enabled: !!id,
   });
+}
+
+// --- Resume Builder --------------------------------------------------------
+// Same-origin BFF calls through apiFetch, so the 401-refresh behaviour is
+// identical to every other BFF call. The BFF proxies 1:1 to the backend
+// /resume-builder/* paths (see src/app/api/resume-builder/**).
+
+/**
+ * GET /resume-builder/templates. Falls back to the built-in Modern /
+ * Classic / Minimal templates when the backend list is unavailable, so
+ * the gallery always renders — the fallback is content, not user data,
+ * and a failed list must not block building a resume.
+ */
+export async function fetchBuilderTemplates(): Promise<BuilderTemplate[]> {
+  try {
+    const raw = await apiFetch<unknown>("/resume-builder/templates");
+    const templates = normalizeBuilderTemplates(raw);
+    return templates.length > 0 ? templates : BUILTIN_TEMPLATES;
+  } catch {
+    return BUILTIN_TEMPLATES;
+  }
+}
+
+export function useBuilderTemplates() {
+  return useQuery({
+    queryKey: ["resume-builder", "templates"],
+    queryFn: () => fetchBuilderTemplates(),
+  });
+}
+
+/** POST multipart /resume-builder/parse — returns the parsed document. */
+export async function parseBuilderResume(
+  file: File,
+): Promise<ResumeBuilderDocument> {
+  const form = new FormData();
+  form.append("file", file);
+  const raw = await apiFetch<unknown>("/resume-builder/parse", {
+    method: "POST",
+    body: form,
+  });
+  return normalizeBuilderDocument(raw);
+}
+
+/** POST /resume-builder/documents — create a document from state. */
+export async function createBuilderDocument(input: {
+  state: ResumeBuilderState;
+  templateId: string;
+  title?: string;
+}): Promise<ResumeBuilderDocument> {
+  const raw = await apiFetch<unknown>("/resume-builder/documents", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return normalizeBuilderDocument(raw);
+}
+
+/** GET /resume-builder/documents/{id} — load a document (?documentId=). */
+export async function fetchBuilderDocument(
+  id: string,
+): Promise<ResumeBuilderDocument> {
+  const raw = await apiFetch<unknown>(
+    `/resume-builder/documents/${encodeURIComponent(id)}`,
+  );
+  return normalizeBuilderDocument(raw);
+}
+
+/** PUT /resume-builder/documents/{id} — save state / template / title. */
+export async function updateBuilderDocument(
+  id: string,
+  patch: {
+    state?: ResumeBuilderState;
+    templateId?: string;
+    title?: string;
+  },
+): Promise<ResumeBuilderDocument> {
+  const raw = await apiFetch<unknown>(
+    `/resume-builder/documents/${encodeURIComponent(id)}`,
+    { method: "PUT", body: JSON.stringify(patch) },
+  );
+  return normalizeBuilderDocument(raw);
+}
+
+/** POST /resume-builder/documents/{id}/copilot — 3–5 rewrite options. */
+export async function requestCopilot(
+  id: string,
+  input: CopilotRequest,
+): Promise<CopilotResponse> {
+  const raw = await apiFetch<unknown>(
+    `/resume-builder/documents/${encodeURIComponent(id)}/copilot`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return normalizeCopilotResponse(raw);
+}
+
+// Blob variant of apiFetch: same Bearer + single 401-refresh retry, but
+// the body is returned as a Blob (export endpoints return a file, not JSON).
+async function apiFetchBlob(
+  path: string,
+  retried = false,
+): Promise<{ blob: Blob; filename: string }> {
+  const token = useAuthStore.getState().accessToken;
+  const headers = new Headers();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(`${BFF}${path}`, {
+    headers,
+    credentials: "same-origin",
+  });
+  if (res.status === 401 && !retried) {
+    const ok = await refreshAccessToken();
+    if (ok) return apiFetchBlob(path, true);
+    useAuthStore.getState().logout();
+  }
+  if (!res.ok) {
+    let message = `Request failed (${res.status})`;
+    try {
+      const body = (await res.json()) as { message?: string; error?: string };
+      message = body.message ?? body.error ?? message;
+    } catch {
+      // keep the generic message when the body is not JSON
+    }
+    throw new ApiError(res.status, message);
+  }
+  const blob = await res.blob();
+  return {
+    blob,
+    filename: filenameFromContentDisposition(
+      res.headers.get("content-disposition"),
+      `resume.${path.includes("format=docx") ? "docx" : "pdf"}`,
+    ),
+  };
+}
+
+/**
+ * GET /resume-builder/documents/{id}/export?format=pdf|docx — the file
+ * plus its server filename. The caller triggers the browser download.
+ */
+export async function exportBuilderDocument(
+  id: string,
+  format: "pdf" | "docx",
+): Promise<{ blob: Blob; filename: string }> {
+  return apiFetchBlob(
+    `/resume-builder/documents/${encodeURIComponent(id)}/export?format=${format}`,
+  );
+}
+
+/** POST .../save-to-profile {label} — returns the saved resume id. */
+export async function saveBuilderDocumentToProfile(
+  id: string,
+  label: string,
+): Promise<SaveToProfileResult> {
+  const raw = await apiFetch<unknown>(
+    `/resume-builder/documents/${encodeURIComponent(id)}/save-to-profile`,
+    { method: "POST", body: JSON.stringify({ label }) },
+  );
+  return normalizeSaveToProfile(raw);
 }

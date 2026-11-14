@@ -277,3 +277,118 @@ export interface NotificationPage {
 export interface UnreadCount {
   unreadCount: number;
 }
+
+// --- Resume Builder (W6 follow-up) ----------------------------------------
+// BFF routes under /api/resume-builder/** proxy 1:1 to the backend
+// /resume-builder/* paths (templates, parse, documents, copilot, export,
+// save-to-profile). No builder service exists in this repo yet, so the
+// field names below follow the task contract; the normalisers in
+// src/lib/resume-builder.ts also accept the snake_case aliases the
+// backend may use, and the gallery falls back to built-in templates when
+// the backend list is unavailable.
+
+export interface BuilderContact {
+  fullName: string;
+  /** Professional title / headline, e.g. "Senior Java Engineer". */
+  title: string;
+  email: string;
+  phone: string;
+  location: string;
+  linkedin: string;
+}
+
+export interface BuilderExperienceItem {
+  id: string;
+  title: string;
+  company: string;
+  startDate: string;
+  endDate: string;
+  /** One bullet per entry; edited as one bullet per line. */
+  bullets: string[];
+}
+
+export interface BuilderEducationItem {
+  id: string;
+  school: string;
+  degree: string;
+  startDate: string;
+  endDate: string;
+}
+
+/** The whole editable document — one object, owned by the builder page. */
+export interface ResumeBuilderState {
+  contact: BuilderContact;
+  summary: string;
+  experience: BuilderExperienceItem[];
+  education: BuilderEducationItem[];
+  /** Free-form skill names. */
+  skills: string[];
+}
+
+/**
+ * One template from GET /resume-builder/templates. `html` is the template
+ * HTML the editor renders: it uses {{fullName}}, {{title}}, {{email}},
+ * {{phone}}, {{location}}, {{linkedin}}, {{summary}}, {{experience}},
+ * {{education}} and {{skills}} tokens (see renderTemplateHtml). A template
+ * whose html carries no tokens renders with the built-in layout for its id.
+ */
+export interface BuilderTemplate {
+  id: string;
+  name: string;
+  description: string;
+  html: string;
+}
+
+/** A saved builder document. `id` is null for a never-saved local draft. */
+export interface ResumeBuilderDocument {
+  id: string | null;
+  templateId: string | null;
+  title: string | null;
+  state: ResumeBuilderState;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export type BuilderSection =
+  | "contact"
+  | "summary"
+  | "experience"
+  | "education"
+  | "skills";
+
+/** Which section/block the Co-Pilot panel is improving. */
+export interface CopilotTarget {
+  section: BuilderSection;
+  /** Experience / education item index; undefined for whole sections. */
+  index?: number;
+  /** Human label shown in the panel heading, e.g. "Experience 1". */
+  label: string;
+}
+
+/** POST /resume-builder/documents/{id}/copilot request body. */
+export interface CopilotRequest {
+  active_section: BuilderSection;
+  user_context: string;
+  target_jd?: string;
+  resume_state: ResumeBuilderState;
+}
+
+export interface CopilotOption {
+  id: string | null;
+  /** Angle tag, e.g. "Impact-led" or "ATS-first". */
+  angle: string;
+  bullets: string[];
+  atsKeywords: string[];
+}
+
+/** POST .../copilot response: 3–5 options to pick from. */
+export interface CopilotResponse {
+  options: CopilotOption[];
+}
+
+/** POST .../save-to-profile response (also accepts a plain ResumeItem). */
+export interface SaveToProfileResult {
+  resumeId: string;
+  label: string | null;
+}
+
