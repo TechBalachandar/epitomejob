@@ -34,6 +34,28 @@
 #     -c "CREATE DATABASE temporal;" -c "CREATE DATABASE temporal_visibility;"
 # (Second run errors "already exists" — harmless.)
 
+# Phase 5A (platform) + 5B (MCP split) — 2026-11-14, patched from main b59dc45.
+# NEW services: gateway, eureka, redis, kafka, elasticsearch, kibana,
+# fluent-bit, jaeger. CHANGED: backend is internal-only on 8081; agent-brain /
+# mcp-server / temporal-worker talk DIRECT to http://backend:8081 (see the
+# JAVA_BASE_URL comment in agent-brain — the gateway is for external/client
+# traffic only, service-to-service stays direct); mcp-server is now built
+# from ./mcp-service as epitomejob/mcp-service:5b; web API_URL is the gateway.
+# Volumes kafka-data / es-data are named, NOT external (see bottom).
+# CROSS-WORKER DEPENDENCIES (not built by this worker): ./gateway-service,
+# ./eureka-server and ./mcp-service must exist with Dockerfiles before
+# `docker compose build`. The gateway/eureka Dockerfiles must install curl
+# (their healthchecks use it, same pattern as backend/Dockerfile) and the
+# gateway image must contain the OTel Java agent jar at
+# /opt/otel/opentelemetry-javaagent.jar (JAVA_TOOL_OPTIONS below) or the
+# gateway JVM will fail to start. The backend needs no agent jar: it already
+# carries micrometer-tracing-bridge-otel and only needs the OTel env vars.
+# TAG CORRECTIONS vs the task brief (all verified 2026-11-14):
+# - jaegertracing/all-in-one:1.62 DOES NOT EXIST; 1.62.0 does (Hub API 200).
+# - elasticsearch/kibana pinned to 8.17.10 (latest 8.17.x; Elastic registry
+#   manifest check 200 + Elastic docs). fluent-bit pinned to 3.2.6 (latest
+#   3.2.x patch). redis:7.4-alpine verified as library/redis (Hub API 200).
+# - apache/kafka:3.9.1 verified (Hub API 200, last updated 2025-05-19).
 name: epitomejob
 
 services:
@@ -126,13 +148,24 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     image: epitomejob/backend:w4
-    ports:
-      - "8080:8080"
+    # Phase 5A: INTERNAL ONLY — no published port. The gateway (8080) is
+    # the only external entry point; the jar still defaults to 8080 and
+    # SERVER_PORT below (compose-only) moves it to 8081. Dockerfile
+    # ENTRYPOINT (incl. -Dnetworkaddress.cache.ttl=5) is untouched.
+    expose:
+      - "8081"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/epitomejob
       SPRING_DATASOURCE_USERNAME: epitomejob
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-epitomejob-dev}
       APP_JWT_SECRET: ${APP_JWT_SECRET:-dev-only-secret-change-me-0123456789abcdef}
+      # Phase 5A: compose-only port move (jar default stays 8080) + Eureka
+      # registration + OTel export to Jaeger (micrometer OTel bridge already
+      # on the classpath — no javaagent needed for the backend).
+      SERVER_PORT: "8081"
+      EUREKA_URL: http://eureka:8761/eureka
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_SERVICE_NAME: epitomejob-backend
       MINIO_ENDPOINT: http://rustfs:9000
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin-dev
@@ -142,12 +175,16 @@ services:
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
     depends_on:
+      # eureka: service_started is enough — the Eureka client retries
+      # registration until the server is up (no healthy-gate deadlock).
+      eureka:
+        condition: service_started
       postgres:
         condition: service_healthy
       rustfs:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -165,7 +202,14 @@ services:
       # agent-brain/app/config.py (field `java_base_url` -> JAVA_BASE_URL,
       # etc.). Defaults in config.py point at localhost, which is wrong
       # inside a container — every service address is overridden here.
-      JAVA_BASE_URL: http://backend:8080
+      # Phase 5A DECISION (documented): JAVA_BASE_URL stays DIRECT to the
+      # backend at http://backend:8081, NOT via the gateway. The gateway
+      # is for external/client traffic and its routes are JWT-secured;
+      # agent-brain has no JWT for internal service-to-service calls,
+      # and routing internal traffic through the gateway would add a
+      # hop, a failure point and auth complexity for zero benefit.
+      # Service-to-service stays direct; the gateway fronts clients only.
+      JAVA_BASE_URL: http://backend:8081
       DATABASE_URL: postgresql://epitomejob:${POSTGRES_PASSWORD:-epitomejob-dev}@postgres:5432/epitomejob
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_ENABLED: "true"
@@ -191,15 +235,18 @@ services:
       start_period: 10s
 
   mcp-server:
+    # Phase 5B: split out of agent-brain into its own ./mcp-service
+    # (Dockerfile + code owned by the 5B worker). Command, port 8001 and
+    # the python-socket healthcheck are unchanged.
     build:
-      context: ./agent-brain
+      context: ./mcp-service
       dockerfile: Dockerfile
-    image: epitomejob/agent-brain:w4
+    image: epitomejob/mcp-service:5b
     command: python -m app.mcp.server
     ports:
       - "8001:8001"
     environment:
-      JAVA_BASE_URL: http://backend:8080
+      JAVA_BASE_URL: http://backend:8081
       DATABASE_URL: postgresql://epitomejob:${POSTGRES_PASSWORD:-epitomejob-dev}@postgres:5432/epitomejob
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_ENABLED: "true"
@@ -233,7 +280,7 @@ services:
     image: epitomejob/agent-brain:w4
     command: python -m app.temporal.worker
     environment:
-      JAVA_BASE_URL: http://backend:8080
+      JAVA_BASE_URL: http://backend:8081
       DATABASE_URL: postgresql://epitomejob:${POSTGRES_PASSWORD:-epitomejob-dev}@postgres:5432/epitomejob
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_ENABLED: "true"
@@ -250,6 +297,177 @@ services:
     # No healthcheck: no HTTP endpoint. Liveness is visible in Temporal UI
     # as task-queue `coach-queue` pollers.
 
+  # --- Phase 5A platform services -------------------------------------------
+  eureka:
+    build:
+      context: .
+      dockerfile: eureka-server/Dockerfile
+    image: epitomejob/eureka-server:5a
+    ports:
+      - "8761:8761"
+    environment:
+      # The registry does not register with itself.
+      EUREKA_CLIENT_REGISTER_WITH_EUREKA: "false"
+      EUREKA_CLIENT_FETCH_REGISTRY: "false"
+    healthcheck:
+      # Requires curl in eureka-server/Dockerfile (same pattern as backend:
+      # eclipse-temurin:21-jre + apt-get install curl). If the 5A Eureka
+      # Dockerfile omits curl, this fails and the gateway (depends_on eureka
+      # healthy) never starts — Mac gate item.
+      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # No volume: Redis is a cache in 5A. Data does not survive `docker compose down`.
+
+  kafka:
+    image: apache/kafka:3.9.1
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      # KRaft cluster id — fixed dev UUID. Must stay stable across restarts
+      # or KRaft refuses to start on the existing log dir.
+      CLUSTER_ID: 4fd41048-4893-48ad-914d-2a59ef760552
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      # In-network advertised address. Host-side tools on the Mac hitting
+      # localhost:9092 will be redirected to kafka:9092 and fail — Kafka is
+      # in-network only in 5A (no host listener configured).
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      # kafka-topics.sh ships in the image at /opt/kafka/bin (KAFKA_HOME).
+      # Exit != 0 until KRaft is up and the broker answers. Mac gate item:
+      # if the path is wrong in 3.9.1, fall back to a TCP check on 9092.
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.10
+    ports:
+      - "9200:9200"
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    mem_limit: 1g
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      # Mac gate item: if curl is absent from the 8.17.10 image this fails
+      # and kibana/fluent-bit (depends_on elasticsearch healthy) never
+      # start — fallback is a TCP check on 9200.
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.17.10
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+
+  fluent-bit:
+    image: fluent/fluent-bit:3.2.6
+    volumes:
+      - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      # Docker-socket mount (tasked): enables the docker_events input if
+      # ever enabled. Container LOGS come from tail on the log dir below,
+      # NOT from the socket — the built-in `docker` input plugin is metrics
+      # (cgroups), not logs. See fluent-bit/fluent-bit.conf.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    # No healthcheck: fluent-bit exposes no HTTP health endpoint by default.
+    # Liveness is visible in `docker compose logs fluent-bit` and by
+    # documents arriving in the epitomejob-logs* indices.
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    healthcheck:
+      # wget, not curl: the all-in-one image does not guarantee curl.
+      # Mac gate item: if wget is absent too, fall back to a TCP check
+      # on 16686.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:16686/"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway-service/Dockerfile
+    image: epitomejob/gateway-service:5a
+    ports:
+      - "8080:8080"
+    environment:
+      EUREKA_URL: http://eureka:8761/eureka
+      APP_JWT_SECRET: ${APP_JWT_SECRET:-dev-only-secret-change-me-0123456789abcdef}
+      # OTel: the gateway image MUST contain the Java agent jar at this path
+      # (gateway-service/Dockerfile, 5A gateway worker) or the gateway JVM
+      # fails to start. OTLP/gRPC export goes to Jaeger :4317.
+      JAVA_TOOL_OPTIONS: "-javaagent:/opt/otel/opentelemetry-javaagent.jar"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_SERVICE_NAME: epitomejob-gateway
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+    depends_on:
+      eureka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # Requires curl in gateway-service/Dockerfile (same pattern as backend).
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
   web:
     build:
       context: ./web
@@ -261,9 +479,10 @@ services:
       # BFF server-side base (server-api.ts: API_URL ?? NEXT_PUBLIC_API_URL
       # ?? http://localhost:8080). NEXT_PUBLIC_API_URL stays unset — the
       # BFF is same-origin.
-      API_URL: http://backend:8080
+      # Phase 5A: the web BFF now talks to the backend THROUGH the gateway.
+      API_URL: http://gateway:8080
     depends_on:
-      backend:
+      gateway:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/login"]
@@ -279,3 +498,8 @@ volumes:
   rustfsdata:
     external: true
     name: backend_rustfsdata
+  kafka-data:
+    # Named, NOT external: survives plain `docker compose down`, deleted
+    # by `docker compose down -v`. Fresh volume — KRaft formats it on first start.
+  es-data:
+    # Named, NOT external: same lifecycle as kafka-data.

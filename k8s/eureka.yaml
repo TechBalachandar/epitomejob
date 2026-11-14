@@ -1,0 +1,75 @@
+# EpitomeJob Phase 5A — eureka (Spring Cloud Netflix Eureka server, 8761).
+# Image epitomejob/eureka-server:5a is built locally from ./eureka-server
+# (5A platform worker) and loaded into kind by k8s/deploy-kind.sh.
+# The server does not register with itself: the compose stack sets the
+# equivalent env vars, and the server's own application.yml (eureka worker)
+# must carry register-with-eureka/fetch-registry false — the env vars here
+# are the belt-and-braces copy of the same setting.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eureka
+  namespace: epitomejob
+  labels:
+    app.kubernetes.io/name: epitomejob
+    app.kubernetes.io/component: eureka
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: eureka
+  template:
+    metadata:
+      labels:
+        app: eureka
+        app.kubernetes.io/name: epitomejob
+        app.kubernetes.io/component: eureka
+    spec:
+      containers:
+        - name: eureka
+          image: epitomejob/eureka-server:5a
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8761
+              name: http
+          env:
+            - name: EUREKA_CLIENT_REGISTER_WITH_EUREKA
+              value: "false"
+            - name: EUREKA_CLIENT_FETCH_REGISTRY
+              value: "false"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8761
+            initialDelaySeconds: 30
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8761
+            initialDelaySeconds: 60
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eureka
+  namespace: epitomejob
+  labels:
+    app.kubernetes.io/name: epitomejob
+    app.kubernetes.io/component: eureka
+spec:
+  type: ClusterIP
+  selector:
+    app: eureka
+  ports:
+    - port: 8761
+      targetPort: 8761
+      name: http

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- EpitomeJob Phase 5A — platform aggregator.
+     Build order is the module order below: the shared library first,
+     then the Eureka server, then the gateway (which depends on the library).
+     From this directory:  mvn verify
+     (Java 21 required; Maven 3.9+.) -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.epitomejob</groupId>
+  <artifactId>epitomejob-platform</artifactId>
+  <version>0.1.0</version>
+  <packaging>pom</packaging>
+  <name>EpitomeJob Platform (Phase 5A)</name>
+  <description>Aggregator for the Phase 5A platform slice: shared library, Eureka server, API gateway.</description>
+
+  <modules>
+    <!-- Build order matters: gateway-service depends on epitomejob-common. -->
+    <module>libs/epitomejob-common</module>
+    <module>eureka-server</module>
+    <module>gateway-service</module>
+  </modules>
+</project>

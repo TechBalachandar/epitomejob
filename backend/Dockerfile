@@ -20,5 +20,11 @@ WORKDIR /app
 # (artifactId epitomejob, version 0.1.0 in pom.xml); the glob keeps the
 # Dockerfile valid if the version is bumped.
 COPY --from=build /app/target/*.jar app.jar
+# Phase 5A: OTel Java agent (v2.18.0, same as the gateway) — the backend's
+# Micrometer OTel bridge has no OTLP exporter on the classpath, so without
+# this agent no backend span would ever reach Jaeger. The agent honours
+# OTEL_EXPORTER_OTLP_ENDPOINT + OTEL_SERVICE_NAME from the compose/k8s env.
+ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.18.0/opentelemetry-javaagent.jar /opt/otel/opentelemetry-javaagent.jar
+ENV JAVA_TOOL_OPTIONS="-javaagent:/opt/otel/opentelemetry-javaagent.jar"
 EXPOSE 8080
 ENTRYPOINT ["java", "-Dnetworkaddress.cache.ttl=5", "-jar", "app.jar"]

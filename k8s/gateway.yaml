@@ -1,0 +1,106 @@
+# EpitomeJob Phase 5A — gateway (Spring Cloud Gateway, port 8080).
+# Image epitomejob/gateway-service:5a is built locally from ./gateway-service
+# (5A gateway worker) and loaded into kind by k8s/deploy-kind.sh.
+# The gateway is the ONLY external entry point in 5A: it fronts the backend
+# (via Eureka discovery) and validates the JWT (APP_JWT_SECRET from the
+# existing epitomejob-secrets Secret — same key the backend already uses;
+# secret.yaml itself is UNCHANGED, it already carries APP_JWT_SECRET).
+# EUREKA_URL + OTEL_EXPORTER_OTLP_ENDPOINT come from epitomejob-config.
+#
+# OTel — NO collector sidecar in 5A (see README): the gateway exports OTLP
+# straight to Jaeger :4317. JAVA_TOOL_OPTIONS points at the Java agent jar;
+# the gateway image MUST contain it at /opt/otel/opentelemetry-javaagent.jar
+# (gateway-service/Dockerfile) or the pod will CrashLoop — Mac gate item.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: epitomejob
+  labels:
+    app.kubernetes.io/name: epitomejob
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+        app.kubernetes.io/name: epitomejob
+        app.kubernetes.io/component: gateway
+    spec:
+      containers:
+        - name: gateway
+          image: epitomejob/gateway-service:5a
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: EUREKA_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: EUREKA_URL
+            - name: REDIS_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: REDIS_HOST
+            - name: REDIS_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: REDIS_PORT
+            - name: APP_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: epitomejob-secrets
+                  key: APP_JWT_SECRET
+            - name: JAVA_TOOL_OPTIONS
+              value: "-javaagent:/opt/otel/opentelemetry-javaagent.jar"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: OTEL_EXPORTER_OTLP_ENDPOINT
+            - name: OTEL_SERVICE_NAME
+              value: "epitomejob-gateway"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  namespace: epitomejob
+  labels:
+    app.kubernetes.io/name: epitomejob
+    app.kubernetes.io/component: gateway
+spec:
+  type: ClusterIP
+  selector:
+    app: gateway
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http

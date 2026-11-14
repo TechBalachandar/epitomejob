@@ -1,0 +1,13 @@
+# EpitomeJob Phase 5A — only the gateway/eureka builds use context = repo
+# root (their Dockerfiles COPY libs/ + <service>/ from the parent dir).
+# Everything else is excluded so the context stays small.
+.git
+backend
+agent-brain
+mcp-service
+web
+k8s
+kind
+docker
+*.md
+.github

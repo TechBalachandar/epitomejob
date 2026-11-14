@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.5.4</version>
+    <relativePath/>
+  </parent>
+
+  <groupId>com.epitomejob</groupId>
+  <artifactId>gateway-service</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+  <name>EpitomeJob Gateway Service</name>
+  <description>Spring Cloud Gateway for the EpitomeJob microservices (Phase 5A):
+    JWT auth, Redis rate limiting, Resilience4j circuit breaking / retry /
+    bulkhead / time limiting, X-Request-Id tracing, Eureka discovery.</description>
+
+  <properties>
+    <java.version>21</java.version>
+    <spring-cloud.version>2025.0.3</spring-cloud.version>
+    <!-- Pinned to the 4.2.x line per the Phase 5A brief (verified on Maven
+         Central). The 2025.0.3 BOM would otherwise manage the Netflix
+         starters at 4.3.3 — the explicit version below wins. -->
+    <eureka.version>4.2.3</eureka.version>
+    <!-- Resilience4j 2.3.x per the brief (verified on Maven Central).
+         The circuit-breaker starter 3.3.3 manages 2.2.0; this property
+         override in the importing POM wins over the imported BOM's value,
+         so every Resilience4j artifact resolves at 2.3.0. -->
+    <resilience4j.version>2.3.0</resilience4j.version>
+    <!-- Same JJWT line as the monolith (backend/pom.xml, verified at b59dc45). -->
+    <jjwt.version>0.12.6</jjwt.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-dependencies</artifactId>
+        <version>${spring-cloud.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <!-- Shared library: ApiError, trace constants + filter, JWT validator. -->
+    <dependency>
+      <groupId>com.epitomejob</groupId>
+      <artifactId>epitomejob-common</artifactId>
+      <version>0.1.0</version>
+    </dependency>
+
+    <!-- Reactive gateway. NOTE: never add spring-boot-starter-web here —
+         the gateway is WebFlux/Netty only; the servlet starter breaks it. -->
+    <dependency>
+      <groupId>org.springframework.cloud</groupId>
+      <artifactId>spring-cloud-starter-gateway</artifactId>
+    </dependency>
+    <!-- Load balancing for lb:// URIs (also pulled in by the gateway starter;
+         declared explicitly so the dependency is visible). -->
+    <dependency>
+      <groupId>org.springframework.cloud</groupId>
+      <artifactId>spring-cloud-starter-loadbalancer</artifactId>
+    </dependency>
+    <!-- Eureka client: the gateway resolves lb://epitomejob-backend and
+         lb://mcp-service through the registry, never a hardcoded host. -->
+    <dependency>
+      <groupId>org.springframework.cloud</groupId>
+      <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+      <version>${eureka.version}</version>
+    </dependency>
+    <!-- Resilience4j circuit breaker for the gateway (reactive variant).
+         Version is BOM-managed at 3.3.3: no 4.x release of this starter
+         exists on Maven Central (the line jumps 3.2.3 -> 5.0.0), so the
+         brief's "4.2.0" could not be pinned. 3.3.3 is what Spring Cloud
+         2025.0.3 manages. -->
+    <dependency>
+      <groupId>org.springframework.cloud</groupId>
+      <artifactId>spring-cloud-starter-circuitbreaker-reactor-resilience4j</artifactId>
+    </dependency>
+    <!-- Resilience4j Spring Boot integration: binds the resilience4j.*
+         properties in application.yml and auto-configures the registries
+         (including ThreadPoolBulkheadRegistry, used by the coach route). -->
+    <dependency>
+      <groupId>io.github.resilience4j</groupId>
+      <artifactId>resilience4j-spring-boot3</artifactId>
+      <version>${resilience4j.version}</version>
+    </dependency>
+    <!-- Explicit compile deps for the custom thread-pool bulkhead filter. -->
+    <dependency>
+      <groupId>io.github.resilience4j</groupId>
+      <artifactId>resilience4j-bulkhead</artifactId>
+      <version>${resilience4j.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.github.resilience4j</groupId>
+      <artifactId>resilience4j-timelimiter</artifactId>
+      <version>${resilience4j.version}</version>
+    </dependency>
+
+    <!-- Reactive Redis for the RequestRateLimiter (token bucket). -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-redis-reactive</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
+    <!-- JJWT (same three artifacts as the monolith; used by the common
+         JwtValidator and by the tests to mint tokens). -->
+    <dependency>
+      <groupId>io.jsonwebtoken</groupId>
+      <artifactId>jjwt-api</artifactId>
+      <version>${jjwt.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.jsonwebtoken</groupId>
+      <artifactId>jjwt-impl</artifactId>
+      <version>${jjwt.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.jsonwebtoken</groupId>
+      <artifactId>jjwt-jackson</artifactId>
+      <version>${jjwt.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.projectreactor</groupId>
+      <artifactId>reactor-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>

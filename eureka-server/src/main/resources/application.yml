@@ -1,0 +1,28 @@
+server:
+  port: 8761
+
+spring:
+  application:
+    name: eureka-server
+
+eureka:
+  client:
+    # This server IS the registry: it neither registers with itself nor
+    # fetches a registry from a peer.
+    register-with-eureka: false
+    fetch-registry: false
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    hostname: localhost
+  server:
+    # Dev choice: with a handful of local instances, self-preservation keeps
+    # dead instances listed and confuses the gateway. Re-enable (default true)
+    # in any shared environment.
+    enable-self-preservation: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

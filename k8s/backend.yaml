@@ -1,4 +1,10 @@
 # EpitomeJob W4 — backend (Spring Boot).
+# Phase 5A: listens on 8081 (SERVER_PORT, compose-only parity), registers
+# with Eureka (EUREKA_URL), exports OTel traces to Jaeger :4317 (the
+# micrometer OTel bridge is already on the classpath — env vars only,
+# NO javaagent/sidecar in 5A). Image tag stays :w4 — it is rebuilt from
+# the patched pom (Eureka client) by deploy-kind.sh. The backend Service
+# is 8081 now; external traffic reaches it via the gateway (8080).
 # W4-API-CONTRACT.md §1/§2a/§4/§6: image epitomejob/backend:w4 built locally
 # from backend/Dockerfile (§2b), port 8080, health at /actuator/health.
 # Env names/values match §2a exactly; secrets come from epitomejob-secrets.
@@ -27,7 +33,7 @@ spec:
           image: epitomejob/backend:w4
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8080
+            - containerPort: 8081
               name: http
           env:
             - name: SPRING_DATASOURCE_URL
@@ -90,6 +96,21 @@ spec:
                 secretKeyRef:
                   name: epitomejob-secrets
                   key: STRIPE_WEBHOOK_SECRET
+            # Phase 5A: internal port (jar default stays 8080) + Eureka + OTel.
+            - name: SERVER_PORT
+              value: "8081"
+            - name: EUREKA_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: EUREKA_URL
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: epitomejob-config
+                  key: OTEL_EXPORTER_OTLP_ENDPOINT
+            - name: OTEL_SERVICE_NAME
+              value: "epitomejob-backend"
           resources:
             requests:
               cpu: 250m
@@ -100,13 +121,13 @@ spec:
           readinessProbe:
             httpGet:
               path: /actuator/health
-              port: 8080
+              port: 8081
             initialDelaySeconds: 60
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /actuator/health
-              port: 8080
+              port: 8081
             initialDelaySeconds: 90
             periodSeconds: 15
 ---
@@ -123,6 +144,6 @@ spec:
   selector:
     app: backend
   ports:
-    - port: 8080
-      targetPort: 8080
+    - port: 8081
+      targetPort: 8081
       name: http

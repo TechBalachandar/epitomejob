@@ -17,18 +17,45 @@
          and the published 34.1.0 jar). -->
     <stripe.version>34.1.0</stripe.version>
     <jacoco.version>0.8.12</jacoco.version>
+    <!-- Phase 5A: Spring Cloud BOM 2025.0.3 verified on Maven Central
+         2026-11-14 (https://repo.maven.apache.org/maven2/org/springframework/cloud/
+         spring-cloud-dependencies/2025.0.3/ — HTTP 200). 2025.0.3 is the
+         latest 2025.0.x patch at that date and pairs with Boot 3.5.4.
+         It manages spring-cloud-netflix 4.3.3, hence the Eureka client
+         below needs no explicit version. -->
+    <spring-cloud.version>2025.0.3</spring-cloud.version>
     <!-- Boot 3.5.4 pins Testcontainers 1.21.3, whose docker-java talks API 1.32.
          Docker Engine 29 (Docker Desktop 4.52+) refuses anything below 1.44,
          so GateJourneyIT fails with 400 "Could not find a valid Docker environment".
          1.21.4 makes 1.21.x work with recent Docker Engine changes. -->
     <testcontainers.version>1.21.4</testcontainers.version>
   </properties>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-dependencies</artifactId>
+        <version>${spring-cloud.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
   <dependencies>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-jpa</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-security</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-validation</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
+    <!-- Phase 5A: Eureka client ONLY. No behaviour change; the backend
+         registers with Eureka (see application.yml) so the gateway can
+         route to it. No @EnableEurekaClient needed: Boot 3.5 + Cloud
+         2025 auto-configures the client from the classpath.
+         spring-cloud-starter-bootstrap is DELIBERATELY NOT added: it
+         only enables bootstrap.yml / spring.cloud.bootstrap, and the
+         Eureka config lives in application.yml, so it would be dead
+         weight (and its version is not the BOM version). -->
+    <dependency><groupId>org.springframework.cloud</groupId><artifactId>spring-cloud-starter-netflix-eureka-client</artifactId></dependency>
     <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-core</artifactId></dependency>
     <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-database-postgresql</artifactId></dependency>
     <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId><scope>runtime</scope></dependency>

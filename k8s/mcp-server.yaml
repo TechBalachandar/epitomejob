@@ -1,7 +1,9 @@
 # EpitomeJob W4 — mcp-server (FastMCP SSE server, port 8001).
-# W4-API-CONTRACT.md §2a/§4/§6: SAME image as agent-brain
-# (epitomejob/agent-brain:w4), command `python -m app.mcp.server`, same env
-# as agent-brain. Serves the 7 tools on /sse (app/mcp/server.py).
+# Phase 5B: image is now epitomejob/mcp-service:5b, built locally from
+# ./mcp-service (5B worker) — no longer the agent-brain image. Command
+# `python -m app.mcp.server`, port 8001, env and TCP probes unchanged.
+# JAVA_BASE_URL comes from epitomejob-config and is now
+# http://backend:8081 (see configmap.yaml) — this file has no env change.
 #
 # Probes: TCP only. The MCP server exposes NO /health endpoint — /sse is an
 # authenticated SSE stream, so an HTTP probe would hang/fail. A TCP connect
@@ -28,7 +30,7 @@ spec:
     spec:
       containers:
         - name: mcp-server
-          image: epitomejob/agent-brain:w4
+          image: epitomejob/mcp-service:5b
           imagePullPolicy: IfNotPresent
           command: ["python", "-m", "app.mcp.server"]
           ports:

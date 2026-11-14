@@ -1,0 +1,523 @@
+# EpitomeJob API gateway (Phase 5A).
+#
+# ROUTE TABLE — paths read from the monolith's controllers at main b59dc45
+# (backend/src/main/java/com/epitomejob/*/controller/*Controller.java):
+#   /auth/**          AuthController        POST /register /login /refresh /logout
+#   /profiles/**      ProfileController     GET|PUT /me
+#   /resumes/**       ResumeController      POST /  PUT /{id}  GET /me  GET /{id}/text
+#   /jobs/**          JobController         GET /  GET /{id}
+#   /matches/**       MatchingController    GET /me  GET /{jobId}
+#   /tracker/**       TrackerController     POST /  GET /me  PUT|DELETE /{id}
+#   /interviews/**    InterviewController   GET /questions  POST /sessions
+#                                       POST /sessions/{id}/answers
+#                                       GET /sessions/me  GET /sessions/{id}
+#   /coach/**         CoachController       POST /chat
+#   /approvals/**     ApprovalController    POST /  POST /{id}/approve|reject  GET /pending
+#   /notifications/** NotificationController GET /me  GET /unread-count
+#                                       POST /{id}/read  POST /read-all
+#   /billing/**       BillingController     GET /status  GET /plans  POST /checkout
+#                                       POST /webhook  GET /entitlement/me
+#   /plans/**         (no standalone /plans controller exists in the monolith
+#                     at b59dc45 — /billing/plans is the live plans endpoint.
+#                     This route is forward-compatible: it 404s from the
+#                     backend until a standalone plans endpoint exists.)
+#   /mcp/**           MCP service (Phase 5B split). Static URI, NOT lb://:
+#                     the Python mcp-service does not register with Eureka
+#                     (no Java client), so discovery cannot resolve it.
+#                     The name mcp-server resolves via compose DNS and the
+#                     k8s Service of the same name. Single instance; if it
+#                     ever scales, revisit (Eureka sidecar or a Java shim).
+#
+# SECURITY: /auth/** is public. Every other route requires a valid Bearer
+# access JWT — enforced by JwtAuthFilter (a GlobalFilter), NOT by these
+# routes: 401 on missing / expired / badly-signed / malformed token, and
+# on refresh tokens used as API credentials.
+#
+# FILTER ORDER on each route (declaration order): RequestRateLimiter runs
+# once per request, then Retry (GETs only, re-executes the chain below it),
+# then CircuitBreaker (each attempt gets its own 3s time limit and counts
+# separately). The coach route additionally runs ThreadPoolBulkhead before
+# Retry so LLM work sits on its own pool.
+#
+# DISCOVERY: every uri is lb://<eureka-service-name> — no host is hardcoded,
+# except /mcp/**, which is a static http:// URI (see above).
+# INTEGRATION NOTE: the monolith currently registers as "epitomejob"
+# (spring.application.name in backend/src/main/resources/application.yml).
+# For lb://epitomejob-backend to resolve, the monolith must register under
+# that name when its Eureka client is added (rename spring.application.name
+# to epitomejob-backend, or change these URIs to lb://epitomejob).
+
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway-service
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: false # explicit routes only; no auto-created lb routes
+      routes:
+        - id: auth
+          uri: lb://epitomejob-backend
+          predicates:
+            - Path=/auth/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                rate-limiter: "#{@redisRateLimiter}"
+                key-resolver: "#{@userKeyResolver}"
+            - name: Retry
+              args:
+                retries: 3
+                methods: GET
+                series: SERVER_ERROR
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 1000ms
+                  factor: 2
+                  basedOnPreviousValue: true
+            - name: CircuitBreaker
+              args:
+                name: backend
+                fallbackUri: forward:/fallback/backend
+                statusCodes:
+                  - 500
+                  - 502
+                  - 503
+                  - 504
+        - id: profiles
+          uri: lb://epitomejob-backend
+          predicates:
+            - Path=/profiles/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                rate-limiter: "#{@redisRateLimiter}"
+                key-resolver: "#{@userKeyResolver}"
+            - name: Retry
+              args:
+                retries: 3
+                methods: GET
+                series: SERVER_ERROR
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 1000ms
+                  factor: 2
+                  basedOnPreviousValue: true
+            - name: CircuitBreaker
+              args:
+                name: backend
+                fallbackUri: forward:/fallback/backend
+                statusCodes:
+                  - 500
+                  - 502
+                  - 503
+                  - 504
+        - id: resumes
+          uri: lb://epitomejob-backend
+          predicates:
+            - Path=/resumes/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                rate-limiter: "#{@redisRateLimiter}"
+                key-resolver: "#{@userKeyResolver}"
+            - name: Retry
+              args:
+                retries: 3
+                methods: GET
+                series: SERVER_ERROR
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 1000ms
+                  factor: 2
+                  basedOnPreviousValue: true
+            - name: CircuitBreaker
+              args:
+                name: backend
+                fallbackUri: forward:/fallback/backend
+                statusCodes:
+                  - 500
+                  - 502
+                  - 503
+                  - 504
+        - id: jobs
+          uri: lb://epitomejob-backend
+          predicates:
+            - Path=/jobs/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                rate-limiter: "#{@redisRateLimiter}"
+                key-resolver: "#{@userKeyResolver}"
+            - name: Retry
+              args:
+                retries: 3
+                methods: GET
+                series: SERVER_ERROR
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 1000ms
+                  factor: 2
+                  basedOnPreviousValue: true
+            - name: CircuitBreaker
+              args:
+                name: backend
+                fallbackUri: forward:/fallback/backend
+                statusCodes:
+                  - 500
+                  - 502
+                  - 503
+                  - 504
+        - id: matches
+          uri: lb://epitomejob-backend
+          predicates:
+            - Path=/matches/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                rate-limiter: "#{@redisRateLimiter}"
+                key-resolver: "#{@userKeyResolver}"
+            - name: Retry
+              args:
+                retries: 3
+                methods: GET
+                series: SERVER_ERROR
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 1000ms
+                  factor: 2
+                  basedOnPreviousValue: true
+            - name: CircuitBreaker
+              args:
+                name: backend
+                fallbackUri: forward:/fallback/backend
+                statusCodes:
+                  - 500
+                  - 502
+                  - 503
+                  - 504
+        - id: tracker
+          uri: lb://epitomejob-backend
+          predicates:
+            - Path=/tracker/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                rate-limiter: "#{@redisRateLimiter}"
+                key-resolver: "#{@userKeyResolver}"
+            - name: Retry
+              args:
+                retries: 3
+                methods: GET
+                series: SERVER_ERROR
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 1000ms
+                  factor: 2
+                  basedOnPreviousValue: true
+            - name: CircuitBreaker
+              args:
+                name: backend
+                fallbackUri: forward:/fallback/backend
+                statusCodes:
+                  - 500
+                  - 502
+                  - 503
+                  - 504
+        - id: interviews
+          uri: lb://epitomejob-backend
+          predicates:
+            - Path=/interviews/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                rate-limiter: "#{@redisRateLimiter}"
+                key-resolver: "#{@userKeyResolver}"
+            - name: Retry
+              args:
+                retries: 3
+                methods: GET
+                series: SERVER_ERROR
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 1000ms
+                  factor: 2
+                  basedOnPreviousValue: true
+            - name: CircuitBreaker
+              args:
+                name: backend
+                fallbackUri: forward:/fallback/backend
+                statusCodes:
+                  - 500
+                  - 502
+                  - 503
+                  - 504
+        - id: coach
+          uri: lb://epitomejob-backend
+          predicates:
+            - Path=/coach/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                rate-limiter: "#{@redisRateLimiter}"
+                key-resolver: "#{@userKeyResolver}"
+            # Slow downstream (agent-brain LLM): own thread pool, not the
+            # Netty event loop. See ThreadPoolBulkheadGatewayFilterFactory.
+            - name: ThreadPoolBulkhead
+              args:
+                name: coach
+            - name: Retry
+              args:
+                retries: 3
+                methods: GET
+                series: SERVER_ERROR
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 1000ms
+                  factor: 2
+                  basedOnPreviousValue: true
+            - name: CircuitBreaker
+              args:
+                name: backend
+                fallbackUri: forward:/fallback/backend
+                statusCodes:
+                  - 500
+                  - 502
+                  - 503
+                  - 504
+        - id: approvals
+          uri: lb://epitomejob-backend
+          predicates:
+            - Path=/approvals/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                rate-limiter: "#{@redisRateLimiter}"
+                key-resolver: "#{@userKeyResolver}"
+            - name: Retry
+              args:
+                retries: 3
+                methods: GET
+                series: SERVER_ERROR
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 1000ms
+                  factor: 2
+                  basedOnPreviousValue: true
+            - name: CircuitBreaker
+              args:
+                name: backend
+                fallbackUri: forward:/fallback/backend
+                statusCodes:
+                  - 500
+                  - 502
+                  - 503
+                  - 504
+        - id: notifications
+          uri: lb://epitomejob-backend
+          predicates:
+            - Path=/notifications/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                rate-limiter: "#{@redisRateLimiter}"
+                key-resolver: "#{@userKeyResolver}"
+            - name: Retry
+              args:
+                retries: 3
+                methods: GET
+                series: SERVER_ERROR
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 1000ms
+                  factor: 2
+                  basedOnPreviousValue: true
+            - name: CircuitBreaker
+              args:
+                name: backend
+                fallbackUri: forward:/fallback/backend
+                statusCodes:
+                  - 500
+                  - 502
+                  - 503
+                  - 504
+        - id: billing
+          uri: lb://epitomejob-backend
+          predicates:
+            - Path=/billing/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                rate-limiter: "#{@redisRateLimiter}"
+                key-resolver: "#{@userKeyResolver}"
+            - name: Retry
+              args:
+                retries: 3
+                methods: GET
+                series: SERVER_ERROR
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 1000ms
+                  factor: 2
+                  basedOnPreviousValue: true
+            - name: CircuitBreaker
+              args:
+                name: backend
+                fallbackUri: forward:/fallback/backend
+                statusCodes:
+                  - 500
+                  - 502
+                  - 503
+                  - 504
+        - id: plans
+          uri: lb://epitomejob-backend
+          predicates:
+            - Path=/plans/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                rate-limiter: "#{@redisRateLimiter}"
+                key-resolver: "#{@userKeyResolver}"
+            - name: Retry
+              args:
+                retries: 3
+                methods: GET
+                series: SERVER_ERROR
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 1000ms
+                  factor: 2
+                  basedOnPreviousValue: true
+            - name: CircuitBreaker
+              args:
+                name: backend
+                fallbackUri: forward:/fallback/backend
+                statusCodes:
+                  - 500
+                  - 502
+                  - 503
+                  - 504
+        - id: mcp
+          uri: http://mcp-server:8001
+          predicates:
+            - Path=/mcp/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                rate-limiter: "#{@redisRateLimiter}"
+                key-resolver: "#{@userKeyResolver}"
+            - name: Retry
+              args:
+                retries: 3
+                methods: GET
+                series: SERVER_ERROR
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 1000ms
+                  factor: 2
+                  basedOnPreviousValue: true
+            - name: CircuitBreaker
+              args:
+                name: mcp-service
+                fallbackUri: forward:/fallback/mcp
+                statusCodes:
+                  - 500
+                  - 502
+                  - 503
+                  - 504
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+eureka:
+  client:
+    service-url:
+      # In compose/k8s EUREKA_URL=http://eureka:8761/eureka (the registry
+      # service is named eureka). Env-overridable; localhost default is
+      # for running the gateway bare-metal against a local registry.
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+
+app:
+  jwt:
+    # Same env var + dev default as the monolith (root docker-compose.yml).
+    # DEV ONLY — set APP_JWT_SECRET to a long random value anywhere shared.
+    secret: ${APP_JWT_SECRET:dev-only-secret-change-me-0123456789abcdef}
+
+# Rate limit: 100 req/min per user/IP — token bucket, 2 tokens/sec refill,
+# burst of 100. See RateLimitConfig for the exact semantics.
+gateway:
+  rate-limit:
+    replenish-rate: 2
+    burst-capacity: 100
+    requested-tokens: 1
+
+# Resilience4j, applied per circuit-breaker instance by Spring Cloud
+# CircuitBreaker (one instance per downstream: "backend", "mcp-service").
+# Defaults on every route:
+#   breaker: 50% failure rate over a 10-call count-based window, 30s open,
+#            3 half-open probe calls, auto-transition to half-open.
+#   time limiter: 3s per attempt (cancel the running call on timeout).
+#   bulkhead (semaphore, fast routes): fail fast, no queueing.
+#   retry: NOT configured here — retry is the gateway Retry filter (GETs
+#          only, max 3, exponential backoff). Configuring resilience4j retry
+#          as well would double-retry every failed call.
+resilience4j:
+  circuitbreaker:
+    instances:
+      backend:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+      mcp-service:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+  timelimiter:
+    instances:
+      backend:
+        timeoutDuration: 3s
+        cancelRunningFuture: true
+      mcp-service:
+        timeoutDuration: 3s
+        cancelRunningFuture: true
+  bulkhead:
+    instances:
+      backend:
+        maxConcurrentCalls: 100
+        maxWaitDuration: 0
+      mcp-service:
+        maxConcurrentCalls: 50
+        maxWaitDuration: 0
+  threadpoolbulkhead:
+    instances:
+      coach:
+        coreThreadPoolSize: 4
+        maxThreadPoolSize: 10
+        queueCapacity: 20
+        keepAliveDuration: 20ms
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    com.epitomejob: INFO

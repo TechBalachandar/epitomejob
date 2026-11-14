@@ -1,4 +1,11 @@
 # EpitomeJob W4 — non-secret environment, shared by the k8s Deployments.
+# Phase 5A: JAVA_BASE_URL is now http://backend:8081 (backend moved to
+# 8081) and API_URL is now http://gateway:8080 (web BFF goes through the
+# gateway). New keys: EUREKA_URL, OTEL_EXPORTER_OTLP_ENDPOINT,
+# KAFKA_BOOTSTRAP_SERVERS, REDIS_HOST, ELASTICSEARCH_HOSTS. Changing
+# JAVA_BASE_URL here updates agent-brain, mcp-server and temporal-worker
+# at once (all three read it from this ConfigMap); their own manifests
+# are otherwise UNCHANGED in 5A — except mcp-server's image (see its file).
 # W4-API-CONTRACT.md §4 + §2a/§6. Every name/value below matches §2a exactly;
 # in-cluster hostnames are the Service names (postgres, rustfs, temporal,
 # agent-brain, backend). Ollama runs on the Mac host: host.docker.internal:11434.
@@ -45,7 +52,7 @@ data:
   BILLING_PROVIDER: "stripe"
 
   # --- Agent-brain family (names from agent-brain/app/config.py) ---
-  JAVA_BASE_URL: "http://backend:8080"
+  JAVA_BASE_URL: "http://backend:8081"
   OLLAMA_BASE_URL: "http://host.docker.internal:11434"
   OLLAMA_CHAT_MODEL: "llama3.1:8b"
   OLLAMA_EMBED_MODEL: "nomic-embed-text"
@@ -54,9 +61,17 @@ data:
   TEMPORAL_ENABLED: "true"
   LANGSMITH_ENABLED: "false"
 
+  # --- Phase 5A platform ---
+  EUREKA_URL: "http://eureka:8761/eureka"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4317"
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"
+
   # --- Web (contract §2a) ---
   # BFF server-side base. NEXT_PUBLIC_API_URL stays UNSET (BFF is same-origin).
-  API_URL: "http://backend:8080"
+  API_URL: "http://gateway:8080"
 ---
 # EpitomeJob W4 — Postgres init script for a FRESH volume.
 # Same two CREATE DATABASE statements as docker/postgres/init-temporal-dbs.sql
