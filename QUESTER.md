@@ -23,7 +23,7 @@ Base: repo `TechBalachandar/epitomejob`, main @ `3855e76` (verified
    five suites with the exact steps from `ci.yml` / `nightly.yml`:
    `backend` (`mvn -B verify`, JaCoCo gate ≥ 80% lines / 70% branches),
    `python-tests` (`pytest agent-brain/tests`, 83 tests),
-   `python-evals` (`pytest agent-brain/evals`, 58 evals — 42 run, 16
+   `python-evals` (`pytest agent-brain/evals`, 84 evals — 65 run, 19
    judge-skipped without Ollama, same as nightly), `web-unit` (Vitest) and
    `web-e2e` (Playwright). Quester never changes what a suite asserts.
 3. **Update results in the GitHub project management tool.** On failure

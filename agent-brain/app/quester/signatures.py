@@ -66,6 +66,14 @@ SIGNATURES: tuple[Signature, ...] = (
         what_to_do_first="Check the pinned Testcontainers version against the local Docker Engine version and align them (pin or upgrade), then re-run.",
     ),
     Signature(
+        name="runtime-version-mismatch",
+        verdict="environment",
+        patterns=(r"object\.stream is not a function", r"jsdom.*Blob|Blob.*jsdom"),
+        requires=(r"jsdom|Node|undici",),
+        likely_cause="Test-environment runtime mismatch — the test uses an API the runtime does not provide (known: jsdom 31's Blob has no .stream(), and Node 22's fetch calls it when handling a Blob-bodied Response — CI #34).",
+        what_to_do_first="Check the pinned Node/jsdom versions in CI against the test's assumptions; fix the test's mock (do not construct a real Response from a jsdom Blob) and re-run.",
+    ),
+    Signature(
         name="no-disk-space",
         verdict="environment",
         patterns=(r"No space left on device", r"ENOSPC"),

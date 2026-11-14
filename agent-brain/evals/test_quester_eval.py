@@ -1,11 +1,11 @@
 """Quester triage evals (contract §8 style): one command — ``pytest evals``.
 
-Deterministic checks (all 8 cases, LLM stubbed to return nothing):
+Deterministic checks (all 9 cases, LLM stubbed to return nothing):
   * the verdict is the expected one (deterministic signature);
   * the matched signature is the expected one;
   * ``what_to_do_first`` contains the expected runbook phrase.
 
-Judge (all 8 cases, mark ``judge``): Ollama ``llama3.1:8b`` scores the
+Judge (all 9 cases, mark ``judge``): Ollama ``llama3.1:8b`` scores the
 triage explanation (likely_cause + what_to_do_first) 1-5 for this failure;
 pass = score >= 4 — the same bar as the Coach evals, never lowered.
 When Ollama is unreachable, judge tests are SKIPPED (not failed) and the
@@ -26,7 +26,7 @@ from app.quester.generator import analyze_failure
 from app.quester.schemas import AnalyzeFailureRequest
 
 CASES = json.loads((Path(__file__).parent / "quester_cases.json").read_text())
-assert len(CASES) == 8, "quester eval must have exactly 8 cases"
+assert len(CASES) == 9, "quester eval must have exactly 9 cases"
 assert {c["verdict"] for c in CASES} == {"regression", "flaky", "environment"}, (
     "cases must cover all three verdicts"
 )
