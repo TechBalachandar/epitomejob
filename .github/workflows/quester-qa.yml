@@ -143,6 +143,10 @@ jobs:
       - name: Prepare env (seed jobs, no keys needed)
         run: |
           if [ ! -f .env ]; then cp .env.example .env 2>/dev/null || true; fi
+      - name: Create fresh CI volumes
+        run: |
+          docker volume create backend_pgdata
+          docker volume create backend_rustfsdata
       - name: Build and start the stack
         run: docker compose up -d --build
       - name: Wait for gateway health
