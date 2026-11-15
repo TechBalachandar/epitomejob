@@ -31,7 +31,7 @@ The canonical Quester workflow is .github/workflows/quester-qa.yml. Edit and rev
 
 - Temporal remains the durable workflow runtime; do not introduce a competing workflow engine.
 - LangGraph remains responsible for agent reasoning.
-- The Kotlin/Spring Boot release controller owns policy, lifecycle transitions, audit, and REST/SSE control-plane APIs.
+- The existing Java/Spring Boot backend release-control module owns policy, lifecycle transitions, audit, and REST control-plane APIs. A Kotlin extraction is optional future work only if independent deployment/ownership justifies it.
 - PostgreSQL + Flyway store durable control-plane state; Redis is coordination/cache only.
 - Local Ollama remains the default model provider. No cloud LLM API or spend without explicit user authorization.
 - Agent execution is isolated in Docker with least-privilege, short-lived credentials.
