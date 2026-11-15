@@ -21,6 +21,10 @@
 
   <properties>
     <java.version>21</java.version>
+    <!-- Kotlin 2.1.20 (Kotlin 2.x). Boot 3.5.4 manages 1.9.25; the version is
+         customised via the kotlin.version property, the documented Spring
+         Boot path — Boot 3.5 supports Kotlin 1.9, 2.0 and 2.1. -->
+    <kotlin.version>2.1.20</kotlin.version>
     <spring-cloud.version>2025.0.3</spring-cloud.version>
     <!-- Pinned to the 4.2.x line per the Phase 5A brief. Verified to exist on
          Maven Central. Note: the 2025.0.3 BOM would otherwise manage the
@@ -41,9 +45,9 @@
   </dependencyManagement>
 
   <dependencies>
-    <!-- Kotlin: stdlib + reflect (Spring/Jackson Kotlin support). Version is
-         managed by spring-boot-starter-parent (${kotlin.version} = 2.1.20
-         for Boot 3.5.4). -->
+    <!-- Kotlin: stdlib + reflect (Spring/Jackson Kotlin support).
+         Version is pinned to 2.1.20 (Kotlin 2.x) via the kotlin.version
+         property above — see the properties comment. -->
     <dependency>
       <groupId>org.jetbrains.kotlin</groupId>
       <artifactId>kotlin-stdlib</artifactId>
