@@ -8,6 +8,10 @@
   <name>epitomejob</name><description>EpitomeJob Phase 0 - modular monolith (clean architecture)</description>
   <properties>
     <java.version>21</java.version>
+    <!-- Kotlin 2.1.20 (Kotlin 2.x). Boot 3.5.4 manages 1.9.25; the version is
+         customised via the kotlin.version property, the documented Spring
+         Boot path — Boot 3.5 supports Kotlin 1.9, 2.0 and 2.1. -->
+    <kotlin.version>2.1.20</kotlin.version>
     <jjwt.version>0.12.6</jjwt.version>
     <minio.version>8.5.13</minio.version>
     <springdoc.version>2.8.13</springdoc.version>
@@ -43,6 +47,25 @@
     </dependencies>
   </dependencyManagement>
   <dependencies>
+    <!-- Kotlin: stdlib + reflect (Spring/Jackson Kotlin support).
+         Version is pinned to 2.1.20 (Kotlin 2.x) via the kotlin.version
+         property above — see the properties comment. -->
+    <dependency>
+      <groupId>org.jetbrains.kotlin</groupId>
+      <artifactId>kotlin-stdlib</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains.kotlin</groupId>
+      <artifactId>kotlin-reflect</artifactId>
+    </dependency>
+
+    <!-- Jackson Kotlin module: needed to (de)serialise Kotlin data classes
+         (DTOs) — plain Jackson only sees getters. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.module</groupId>
+      <artifactId>jackson-module-kotlin</artifactId>
+    </dependency>
+
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-jpa</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-security</artifactId></dependency>
@@ -80,6 +103,63 @@
     <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>
   </dependencies>
   <build><plugins>
+    <!-- Kotlin (Maven + kotlin-maven-plugin). The kotlin-spring (all-open)
+         compiler plugin opens Spring-annotated classes (Kotlin classes are
+         final by default, which breaks Spring proxies); the kotlin-jpa
+         plugin generates a no-arg constructor for @Entity classes.
+         kotlin:compile runs in process-sources, before
+         maven-compiler-plugin, so mixed Kotlin/Java sources compile together. -->
+    <plugin>
+      <groupId>org.jetbrains.kotlin</groupId>
+      <artifactId>kotlin-maven-plugin</artifactId>
+      <version>${kotlin.version}</version>
+      <executions>
+        <execution>
+          <id>compile</id>
+          <goals>
+            <goal>compile</goal>
+          </goals>
+          <configuration>
+            <sourceDirs>
+              <sourceDir>${project.basedir}/src/main/kotlin</sourceDir>
+              <sourceDir>${project.basedir}/src/main/java</sourceDir>
+            </sourceDirs>
+          </configuration>
+        </execution>
+        <execution>
+          <id>test-compile</id>
+          <goals>
+            <goal>test-compile</goal>
+          </goals>
+          <configuration>
+            <sourceDirs>
+              <sourceDir>${project.basedir}/src/test/kotlin</sourceDir>
+              <sourceDir>${project.basedir}/src/test/java</sourceDir>
+            </sourceDirs>
+          </configuration>
+        </execution>
+      </executions>
+      <configuration>
+        <jvmTarget>21</jvmTarget>
+        <javaParameters>true</javaParameters>
+        <compilerPlugins>
+          <plugin>spring</plugin>
+          <plugin>jpa</plugin>
+        </compilerPlugins>
+      </configuration>
+      <dependencies>
+        <dependency>
+          <groupId>org.jetbrains.kotlin</groupId>
+          <artifactId>kotlin-maven-allopen</artifactId>
+          <version>${kotlin.version}</version>
+        </dependency>
+        <dependency>
+          <groupId>org.jetbrains.kotlin</groupId>
+          <artifactId>kotlin-maven-noarg</artifactId>
+          <version>${kotlin.version}</version>
+        </dependency>
+      </dependencies>
+    </plugin>
     <plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin>
     <plugin>
       <groupId>org.jacoco</groupId><artifactId>jacoco-maven-plugin</artifactId><version>${jacoco.version}</version>
