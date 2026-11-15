@@ -12,11 +12,11 @@ This plan is incremental. Each phase must have a passing automated gate before t
 - [ ] Pin third-party GitHub Actions to full reviewed commit SHAs.
 
 ## Phase 1 — Release-control persistence and API
-- [ ] Add release candidate, approval, audit-event, idempotency and outbox schema using Flyway.
-- [ ] Add authenticated API and policy-enforced state machine to the existing backend.
-- [ ] Add append-only audit and optimistic locking.
-- [ ] Add unit, repository and integration tests for legal/illegal transitions and concurrent approvals.
-- [ ] Add REST API documentation and a read-only release timeline endpoint.
+- [x] Add initial release-candidate and append-only audit schema using Flyway (V10).
+- [x] Add authenticated candidate-create/read/timeline API in the existing backend.
+- [x] Add request idempotency, creator ownership checks, optimistic-lock field, and append-only audit trigger.
+- [x] Add unit tests for candidate creation, replay, idempotency-key conflict and ownership.
+- [ ] Add full policy-enforced lifecycle transitions, architecture/QA evidence, approvals, outbox, repository/integration/concurrency tests and API documentation.
 
 ## Phase 2 — Temporal orchestration
 - [ ] Add a distinct `ReleaseWorkflow` and `release-queue` to the existing Temporal Python worker.
@@ -54,4 +54,4 @@ This plan is incremental. Each phase must have a passing automated gate before t
 
 ## Current delivery status
 
-Phase 0 documentation and workflow changes are in PR #17. This is not a deployed release controller. Phases 1–6 are not implemented yet. Do not mark them complete until code, tests and CI evidence exist.
+Phase 0 governance documentation/workflow changes and the first Phase 1 candidate API slice are in PR #17. The release controller is not production-ready: there are no lifecycle-transition, agent-evidence, human environment-approval, transactional-outbox or Temporal release-workflow implementations yet. The Maven test suite has not been run in this execution environment and the latest commit has no reported status checks. Do not mark the phase complete until CI and the remaining acceptance criteria pass.
