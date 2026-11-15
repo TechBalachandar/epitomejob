@@ -17,7 +17,7 @@ This is preferable to building a separate dashboard first: GitHub already owns i
 |---|---|---|---|
 | TheVoper | Issue implementation, tests, feature branch and PR | Read / search / edit / execute | May push feature branch and open PR; cannot merge |
 | ArXtechT | Independent architecture, security and maintainability review | Read / search only | Report findings; cannot modify code or approve/merge |
-| Quester | Independent unit, integration, E2E and regression QA | Read / search / execute; test-only edits when explicitly authorized | Report defects and verify fixes; cannot change production code or merge |
+| Quester | Independent unit, integration, E2E and regression QA | Read / search / execute only | Report defects and verify fixes; cannot modify files or merge |
 
 The profiles are specialist instructions for GitHub Copilot agents. They do not create running sessions by themselves. A session starts when a user launches the agent or assigns it to an issue/PR in GitHub.
 
