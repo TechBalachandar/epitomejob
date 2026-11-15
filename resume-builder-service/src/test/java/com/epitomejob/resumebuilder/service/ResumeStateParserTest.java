@@ -66,6 +66,65 @@ class ResumeStateParserTest {
   }
 
   @Test
+  void companyFirstHeaderIsNotSwapped() {
+    // Resumes often list the company first: "Company | Title | Location |
+    // Dates". The parser must not put the company in the title field and
+    // the title (plus location) in the company field (issue #12).
+    String text = """
+        Balachandar Jeldi
+        balachandar@example.com
+        EXPERIENCE
+        Zillion Technologies/Navy Federal | Lead Engineer | Remote | Jan 2021 – Present
+        • Built mobile banking apps
+        Junior Engineer | Difference Engine Co 2018 - 2019
+        • Built prototype gears
+        """;
+    ObjectNode state = parser.parse(text);
+
+    assertThat(state.path("experience")).hasSize(2);
+    assertThat(state.path("experience").get(0).path("title").asText())
+        .isEqualTo("Lead Engineer");
+    assertThat(state.path("experience").get(0).path("company").asText())
+        .isEqualTo("Zillion Technologies/Navy Federal");
+    assertThat(state.path("experience").get(0).path("startDate").asText())
+        .isEqualTo("Jan 2021");
+    assertThat(state.path("experience").get(0).path("endDate").asText())
+        .isEqualTo("Present");
+    // Title-first headers still parse the old way.
+    assertThat(state.path("experience").get(1).path("title").asText())
+        .isEqualTo("Junior Engineer");
+    assertThat(state.path("experience").get(1).path("company").asText())
+        .isEqualTo("Difference Engine Co");
+  }
+
+  @Test
+  void executiveSummaryHeadingIsNotTheContactName() {
+    // A name on a "Name | Title" line plus an "EXECUTIVE SUMMARY" heading:
+    // the name must come from the first segment of the pipe line, and the
+    // heading must be treated as the summary heading — never as the name.
+    String text = """
+        Balachandar Jeldi | Senior Software Engineer
+        balachandar@example.com | (980) 425-3125
+        Reston, VA
+        EXECUTIVE SUMMARY
+        Seasoned Android Engineer with 16+ years of experience.
+        EXPERIENCE
+        Lead Engineer at Zillion Technologies Jan 2021 – Present
+        • Built mobile banking apps
+        """;
+    ObjectNode state = parser.parse(text);
+
+    assertThat(state.path("contact").path("fullName").asText())
+        .isEqualTo("Balachandar Jeldi");
+    assertThat(state.path("contact").path("fullName").asText())
+        .isNotEqualTo("EXECUTIVE SUMMARY");
+    assertThat(state.path("summary").asText()).contains("Seasoned Android Engineer");
+    assertThat(state.path("experience")).hasSize(1);
+    assertThat(state.path("experience").get(0).path("title").asText())
+        .isEqualTo("Lead Engineer");
+  }
+
+  @Test
   void emptyStateHasTheFullShape() {
     ObjectNode state = parser.emptyState();
     assertThat(state.path("contact").path("fullName").asText()).isEmpty();

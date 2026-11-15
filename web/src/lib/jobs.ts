@@ -42,6 +42,8 @@ export function jobSourceLabel(source: string | null | undefined): string {
       return "Naukri";
     case "COMPANY":
       return "Company site";
+    case "ADZUNA":
+      return "Adzuna";
     default:
       return "Seed";
   }
@@ -52,6 +54,8 @@ export function applyLinkLabel(source: string | null | undefined): string {
   switch ((source ?? "SEED").toUpperCase()) {
     case "COMPANY":
       return "Apply on company site";
+    case "ADZUNA":
+      return "Apply on Adzuna";
     case "SEED":
       return "Apply on source";
     default:

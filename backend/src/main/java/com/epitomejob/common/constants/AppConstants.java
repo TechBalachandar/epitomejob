@@ -63,6 +63,11 @@ public final class AppConstants {
     public static final String STATUS_FAILED = "FAILED";
     public static final String PDF_EXTENSION = ".pdf";
     public static final String PDF_CONTENT_TYPE = "application/pdf";
+    public static final String DOC_EXTENSION = ".doc";
+    public static final String DOC_CONTENT_TYPE = "application/msword";
+    public static final String DOCX_EXTENSION = ".docx";
+    public static final String DOCX_CONTENT_TYPE =
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     public static final long MAX_FILE_SIZE_BYTES = 10L * 1024 * 1024;
     public static final int MAX_PARSED_TEXT_CHARS = 20_000;
     /** Resume label (W6 contract §2b): optional, trimmed, 1–80 chars. */
@@ -294,7 +299,7 @@ public final class AppConstants {
     public static final String APPROVAL_EXPIRED = "Approval expired — please re-propose";
     public static final String NO_FILE_UPLOADED = "No file uploaded";
     public static final String FILE_TOO_LARGE = "Max 10 MB";
-    public static final String PDF_ONLY = "Phase 0 accepts PDF only (DOCX comes in Phase 3)";
+    public static final String UNSUPPORTED_RESUME_TYPE = "Upload a PDF, DOC, or DOCX file";
     public static final String NOT_AUTHENTICATED = "Not authenticated";
     public static final String JOB_NOT_FOUND = "Job not found";
     public static final String JOB_ID_REQUIRED = "jobId is required";

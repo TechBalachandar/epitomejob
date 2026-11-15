@@ -21,7 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { signOut, useUnreadCount } from "@/lib/api";
+import { restoreSession, signOut, useUnreadCount } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { Button } from "./ui/button";
 
@@ -103,13 +103,43 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, email } = useAuthStore();
   const [mobileOpen, setMobileOpen] = useState(false);
   const isPublic = PUBLIC_PATHS.includes(pathname);
+  // Session restore on load: the access token lives in memory only, so a
+  // full page reload starts unauthenticated. Before redirecting to /login,
+  // try to restore the session via the httpOnly refresh cookie. The
+  // redirect below waits until that check has completed, so a reload with
+  // a live refresh cookie keeps the user on the same page instead of
+  // bouncing to /login. A deliberate logout leaves restoreChecked true
+  // (it was set on the first load), so logout still redirects at once.
+  const [restoreChecked, setRestoreChecked] = useState(
+    isPublic || isAuthenticated,
+  );
+  useEffect(() => {
+    if (isPublic || isAuthenticated) return;
+    let alive = true;
+    void restoreSession().finally(() => {
+      if (alive) setRestoreChecked(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [isPublic, isAuthenticated]);
 
   // W1 auth guard: every page except /login and /register needs a session.
-  // The access token lives in memory only, so a full page reload still
-  // returns here (the refresh cookie does not restore the session yet).
+  // It waits for the restore check above, so a reload does not redirect
+  // before the refresh cookie has had its chance.
   useEffect(() => {
-    if (!isPublic && !isAuthenticated) router.replace("/login");
-  }, [isPublic, isAuthenticated, router]);
+    if (!isPublic && !isAuthenticated && restoreChecked) router.replace("/login");
+  }, [isPublic, isAuthenticated, restoreChecked, router]);
+
+  // While the restore check is pending, hold a loading state instead of
+  // flashing protected content (or the login page) for a frame.
+  if (!isPublic && !isAuthenticated && !restoreChecked) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <p className="text-sm text-slate-500">Restoring your session…</p>
+      </div>
+    );
+  }
 
   if (isPublic) {
     return (

@@ -272,6 +272,9 @@ spring:
                 key-resolver: "#{@userKeyResolver}"
             # Slow downstream (agent-brain LLM): own thread pool, not the
             # Netty event loop. See ThreadPoolBulkheadGatewayFilterFactory.
+            # The CircuitBreaker below is the "coach" instance (120s time
+            # limit), NOT "backend" (3s) — a chat turn takes far longer
+            # than 3s and the 3s limiter cancelled every Coach call (#11).
             - name: ThreadPoolBulkhead
               args:
                 name: coach
@@ -287,7 +290,7 @@ spring:
                   basedOnPreviousValue: true
             - name: CircuitBreaker
               args:
-                name: backend
+                name: coach
                 fallbackUri: forward:/fallback/backend
                 statusCodes:
                   - 500
@@ -494,7 +497,8 @@ gateway:
     requested-tokens: 1
 
 # Resilience4j, applied per circuit-breaker instance by Spring Cloud
-# CircuitBreaker (one instance per downstream: "backend", "mcp-service").
+# CircuitBreaker (one instance per downstream: "backend", "mcp-service",
+# "resume-builder", plus "coach" for the slow LLM route).
 # Defaults on every route:
 #   breaker: 50% failure rate over a 10-call count-based window, 30s open,
 #            3 half-open probe calls, auto-transition to half-open.
@@ -503,6 +507,12 @@ gateway:
 #   retry: NOT configured here — retry is the gateway Retry filter (GETs
 #          only, max 3, exponential backoff). Configuring resilience4j retry
 #          as well would double-retry every failed call.
+# Coach exception (issue #11): the /coach route must NOT use the "backend"
+# instance. A chat turn calls Ollama llama3.1:8b (local LLM) plus RAG and
+# possibly Temporal — it takes far longer than 3s, so the 3s limiter
+# cancelled every Coach call and the fallback 503 made Coach unusable.
+# The "coach" instance gets a 120s timeout, matching the agent-brain's
+# Ollama timeout (120s) and the backend's agent-brain read timeout (120s).
 resilience4j:
   circuitbreaker:
     instances:
@@ -530,6 +540,14 @@ resilience4j:
         waitDurationInOpenState: 30s
         permittedNumberOfCallsInHalfOpenState: 3
         automaticTransitionFromOpenToHalfOpenEnabled: true
+      coach:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
   timelimiter:
     instances:
       backend:
@@ -540,6 +558,9 @@ resilience4j:
         cancelRunningFuture: true
       resume-builder:
         timeoutDuration: 3s
+        cancelRunningFuture: true
+      coach:
+        timeoutDuration: 120s
         cancelRunningFuture: true
   bulkhead:
     instances:

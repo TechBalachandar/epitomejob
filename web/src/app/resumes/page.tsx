@@ -150,16 +150,16 @@ export default function ResumesPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Resumes</h1>
         <p className="mt-1 text-sm text-slate-500">
-          PDF only, up to 10 MB. The server parses the file — status turns
-          READY shortly after upload. Give each resume a label (e.g. Android
-          Developer) so matching can tell them apart.
+          PDF, DOC, or DOCX, up to 10 MB. The server parses the file —
+          status turns READY shortly after upload. Give each resume a
+          label (e.g. Android Developer) so matching can tell them apart.
         </p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Upload a resume</CardTitle>
-          <CardDescription>Choose a PDF file from your device.</CardDescription>
+          <CardDescription>Choose a PDF, DOC, or DOCX file from your device.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
@@ -179,7 +179,7 @@ export default function ResumesPage() {
           <input
             ref={inputRef}
             type="file"
-            accept="application/pdf,.pdf"
+            accept=".pdf,.doc,.docx"
             className="hidden"
             onChange={(e) => void handleFile(e.target.files?.[0])}
           />
@@ -190,7 +190,7 @@ export default function ResumesPage() {
             onClick={() => inputRef.current?.click()}
           >
             <UploadCloud className="h-4 w-4" aria-hidden />
-            {upload.isPending ? "Uploading…" : "Choose PDF"}
+            {upload.isPending ? "Uploading…" : "Choose file"}
           </Button>
           {error && (
             <p role="alert" className="text-sm text-rose-600">{error}</p>
@@ -206,7 +206,7 @@ export default function ResumesPage() {
           {isLoading && <p className="text-sm text-slate-500">Loading…</p>}
           {!isLoading && (!resumes || resumes.length === 0) && (
             <p className="text-sm text-slate-500">
-              No resumes yet. Upload your first PDF above.
+              No resumes yet. Upload your first resume above.
             </p>
           )}
           <ul className="flex flex-col divide-y divide-slate-100">

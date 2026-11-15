@@ -2,10 +2,10 @@ import { create } from "zustand";
 
 // Auth state lives in memory only. The access token is never written to
 // localStorage (or any other persistent storage), and the refresh token is
-// not held here at all: in W1 the BFF sets it as an httpOnly cookie and the
-// browser sends it automatically. Consequence: a full page reload still
-// loses the session and returns to /login (session restore on load is a
-// known W1 follow-up, not part of the W1 gate).
+// not held here at all: the BFF sets it as an httpOnly cookie and the
+// browser sends it automatically. A full page reload restores the session
+// on load — the AppShell calls restoreSession() (refresh via the cookie)
+// before deciding to redirect to /login.
 interface AuthState {
   userId: string | null;
   email: string | null;

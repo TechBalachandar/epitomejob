@@ -74,7 +74,18 @@ export function refreshAccessToken(): Promise<boolean> {
       });
       if (!res.ok) return false;
       const data = (await res.json()) as AuthResponse;
-      useAuthStore.getState().setAccessToken(data.accessToken);
+      // Restore the full session, not just the token: the refresh
+      // response carries the user identity, so a page reload re-hydrates
+      // the store (userId/email/role) as well as the access token. For
+      // the 401-retry path this is a no-op (same user); for a reload it
+      // is what keeps the user logged in. Logout always clears the
+      // refresh cookie, so a refresh can never re-login a logged-out user.
+      useAuthStore.getState().login({
+        userId: data.userId,
+        email: data.email,
+        role: data.role,
+        accessToken: data.accessToken,
+      });
       return true;
     } catch {
       return false;
@@ -84,6 +95,15 @@ export function refreshAccessToken(): Promise<boolean> {
     refreshPromise = null;
   });
   return refreshPromise;
+}
+
+/** Restore the session on app load: refresh via the httpOnly cookie and
+ * re-hydrate the user. Returns true when a session is now active. The
+ * AppShell redirects to /login only when this returns false — a reload
+ * with a live refresh cookie keeps the user on the same page. */
+export async function restoreSession(): Promise<boolean> {
+  const ok = await refreshAccessToken();
+  return ok && useAuthStore.getState().isAuthenticated;
 }
 
 async function apiFetch<T>(

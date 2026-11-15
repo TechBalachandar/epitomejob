@@ -131,6 +131,26 @@ class RouteConfigTest {
   }
 
   @Test
+  void coachRouteUsesTheCoachCircuitBreakerNotBackend() {
+    // Issue #11: the coach route used the "backend" circuit breaker, whose
+    // 3s time limiter cancelled every chat turn (an Ollama call takes far
+    // longer than 3s) and the fallback 503 made Coach unusable. The coach
+    // route must use the dedicated "coach" instance (120s time limit).
+    var cb = routeById("coach").getFilters().stream()
+        .filter(f -> f.getName().equals("CircuitBreaker")).findFirst().orElseThrow();
+    assertEquals("coach", cb.getArgs().get("name"),
+        "coach must use the coach circuit breaker (120s), not backend (3s)");
+    EXPECTED_ROUTES.keySet().stream()
+        .filter(id -> !id.equals("coach"))
+        .forEach(id -> {
+          var other = routeById(id).getFilters().stream()
+              .filter(f -> f.getName().equals("CircuitBreaker")).findFirst().orElseThrow();
+          assertTrue(!"coach".equals(other.getArgs().get("name")),
+              id + ": the coach circuit breaker belongs only on the coach route");
+        });
+  }
+
+  @Test
   void retryIsGetOnlyAndCircuitBreakerHasFallbackAndStatusCodes() {
     EXPECTED_ROUTES.keySet().forEach(id -> {
       var route = routeById(id);
@@ -186,6 +206,10 @@ class RouteConfigTest {
         "resilience4j.timelimiter.instances.backend.timeoutDuration"));
     assertEquals("3s", environment.getProperty(
         "resilience4j.timelimiter.instances.mcp-service.timeoutDuration"));
+    // Coach exception (issue #11): the LLM route gets 120s, matching the
+    // agent-brain Ollama timeout — a 3s limit cancels every chat turn.
+    assertEquals("120s", environment.getProperty(
+        "resilience4j.timelimiter.instances.coach.timeoutDuration"));
     // Semaphore bulkhead on the fast routes (fail fast, no queueing).
     assertEquals("0", environment.getProperty(
         "resilience4j.bulkhead.instances.backend.maxWaitDuration"));

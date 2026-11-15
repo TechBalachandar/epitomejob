@@ -11,6 +11,7 @@ import {
   loginRequest,
   refreshAccessToken,
   registerRequest,
+  restoreSession,
   signOut,
   useProfile,
 } from "@/lib/api";
@@ -192,6 +193,47 @@ describe("401 refresh + retry", () => {
     expect(b).toBe(true);
     expect(refreshCalls).toBe(1);
     expect(useAuthStore.getState().accessToken).toBe("fresh-token");
+  });
+});
+
+describe("restoreSession (page reload)", () => {
+  it("restores the full session from the refresh cookie", async () => {
+    // The store starts empty (a reload): no user, no token.
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+    const fetchMock = mockFetch((url) => {
+      if (url === "/api/auth/refresh") {
+        return jsonResponse({
+          accessToken: "fresh-token",
+          expiresInMs: 900_000,
+          userId: "user-1",
+          email: "dev@example.com",
+          role: "USER",
+        });
+      }
+      return jsonResponse({ message: "Not found" }, 404);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(restoreSession()).resolves.toBe(true);
+    const state = useAuthStore.getState();
+    expect(state.isAuthenticated).toBe(true);
+    expect(state.accessToken).toBe("fresh-token");
+    expect(state.userId).toBe("user-1");
+    expect(state.email).toBe("dev@example.com");
+  });
+
+  it("returns false and leaves the session empty when the refresh cookie is dead", async () => {
+    const fetchMock = mockFetch((url) => {
+      if (url === "/api/auth/refresh") {
+        return jsonResponse({ message: "No refresh token" }, 401);
+      }
+      return jsonResponse({ message: "Not found" }, 404);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(restoreSession()).resolves.toBe(false);
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+    expect(useAuthStore.getState().accessToken).toBeNull();
   });
 });
 

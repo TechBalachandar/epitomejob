@@ -8,12 +8,21 @@ import com.epitomejob.resume.repository.ResumeRepository;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.poi.hwpf.HWPFDocument;
+import org.apache.poi.hwpf.extractor.WordExtractor;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFTable;
+import org.apache.poi.xwpf.usermodel.XWPFTableCell;
+import org.apache.poi.xwpf.usermodel.XWPFTableRow;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.util.List;
 import java.util.UUID;
 
@@ -45,16 +54,37 @@ public class ResumeService {
       throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, AppConstants.Errors.FILE_TOO_LARGE);
     }
     String name = file.getOriginalFilename() == null ? "resume.pdf" : file.getOriginalFilename();
-    if (!name.toLowerCase().endsWith(AppConstants.Resume.PDF_EXTENSION)) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, AppConstants.Errors.PDF_ONLY);
+    String lower = name.toLowerCase();
+    // /resumes accepts PDF, DOC and DOCX (the Builder parse path already
+    // did; this store was PDF-only). The stored blob keeps the upload's
+    // own extension and content type, and the format is recorded so
+    // downloads and the RAG indexer know what they are reading.
+    String format;
+    String extension;
+    String contentType;
+    if (lower.endsWith(AppConstants.Resume.PDF_EXTENSION)) {
+      format = "pdf";
+      extension = AppConstants.Resume.PDF_EXTENSION;
+      contentType = AppConstants.Resume.PDF_CONTENT_TYPE;
+    } else if (lower.endsWith(AppConstants.Resume.DOCX_EXTENSION)) {
+      format = "docx";
+      extension = AppConstants.Resume.DOCX_EXTENSION;
+      contentType = AppConstants.Resume.DOCX_CONTENT_TYPE;
+    } else if (lower.endsWith(AppConstants.Resume.DOC_EXTENSION)) {
+      format = "doc";
+      extension = AppConstants.Resume.DOC_EXTENSION;
+      contentType = AppConstants.Resume.DOC_CONTENT_TYPE;
+    } else {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+          AppConstants.Errors.UNSUPPORTED_RESUME_TYPE);
     }
     UUID userId = SecurityUtil.currentUserId();
-    String blobPath = userId + "/" + UUID.randomUUID() + AppConstants.Resume.PDF_EXTENSION;
-    blob.put(blobPath, file.getInputStream(), file.getSize(), AppConstants.Resume.PDF_CONTENT_TYPE);
-    Resume resume = resumes.save(new Resume(userId, blobPath, name, "pdf", (int) file.getSize()));
+    String blobPath = userId + "/" + UUID.randomUUID() + extension;
+    blob.put(blobPath, file.getInputStream(), file.getSize(), contentType);
+    Resume resume = resumes.save(new Resume(userId, blobPath, name, format, (int) file.getSize()));
     resume.setLabel(cleanLabel);
-    try (PDDocument doc = Loader.loadPDF(file.getBytes())) {
-      String text = new PDFTextStripper().getText(doc);
+    try {
+      String text = extractText(file.getBytes(), format);
       resume.setParsedText(text.length() > AppConstants.Resume.MAX_PARSED_TEXT_CHARS
           ? text.substring(0, AppConstants.Resume.MAX_PARSED_TEXT_CHARS) : text);
       resume.setStatus(AppConstants.Resume.STATUS_READY);
@@ -62,6 +92,48 @@ public class ResumeService {
       resume.setStatus(AppConstants.Resume.STATUS_FAILED); // file is kept; the user can re-upload
     }
     return resumes.save(resume);
+  }
+
+  /** Text extraction by format: PDFBox for PDF, POI XWPF for DOCX, POI HWPF for legacy DOC. */
+  static String extractText(byte[] bytes, String format) throws Exception {
+    switch (format) {
+      case "pdf" -> {
+        try (PDDocument doc = Loader.loadPDF(bytes)) {
+          return new PDFTextStripper().getText(doc);
+        }
+      }
+      case "docx" -> {
+        StringBuilder out = new StringBuilder();
+        try (InputStream in = new ByteArrayInputStream(bytes);
+             XWPFDocument doc = new XWPFDocument(in)) {
+          for (XWPFParagraph paragraph : doc.getParagraphs()) {
+            appendLine(out, paragraph.getText());
+          }
+          for (XWPFTable table : doc.getTables()) {
+            for (XWPFTableRow row : table.getRows()) {
+              for (XWPFTableCell cell : row.getTableCells()) {
+                appendLine(out, cell.getText());
+              }
+            }
+          }
+        }
+        return out.toString();
+      }
+      case "doc" -> {
+        try (InputStream in = new ByteArrayInputStream(bytes);
+             HWPFDocument doc = new HWPFDocument(in);
+             WordExtractor extractor = new WordExtractor(doc)) {
+          return extractor.getText();
+        }
+      }
+      default -> throw new IllegalArgumentException("Unsupported resume format: " + format);
+    }
+  }
+
+  private static void appendLine(StringBuilder out, String line) {
+    if (line != null && !line.isBlank()) {
+      out.append(line.trim()).append('\n');
+    }
   }
 
   /**

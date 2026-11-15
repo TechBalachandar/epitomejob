@@ -41,6 +41,27 @@ public class ResumeStateParser {
       "(?i)\\b((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\\.?\\s+\\d{4}|\\d{4})\\s*(?:–|—|-|to)\\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\\.?\\s+\\d{4}|\\d{4}|Present|Current)\\b");
   private static final Pattern BULLET = Pattern.compile("^\\s*[•\\-\\*·]\\s*(.*)$");
 
+  /** Company-name signals: legal forms, org words, industry words. */
+  private static final Set<String> COMPANY_WORDS = Set.of(
+      "technologies", "technology", "tech", "inc", "llc", "ltd", "corp", "corporation",
+      "federal", "credit", "union", "bank", "systems", "labs", "laboratories",
+      "consulting", "group", "solutions", "services", "software", "company", "co",
+      "industries", "partners", "global", "digital", "networks", "holdings",
+      "enterprises", "associates", "international", "financial", "health",
+      "communications", "media", "energy", "aerospace", "defense", "retail");
+
+  /** Role signals: words that appear in job titles. */
+  private static final Set<String> TITLE_WORDS = Set.of(
+      "engineer", "developer", "lead", "senior", "manager", "architect", "analyst",
+      "consultant", "director", "designer", "tester", "scientist", "administrator",
+      "specialist", "principal", "staff", "intern", "junior", "associate", "head",
+      "owner", "founder", "president", "officer", "coordinator", "supervisor",
+      "programmer", "devops", "sre", "qa", "product", "project", "scrum", "master");
+
+  /** Work-mode words: a segment that is a place/mode, not a title or a company. */
+  private static final Set<String> LOCATION_WORDS = Set.of(
+      "remote", "hybrid", "onsite", "on-site", "on site");
+
   private final ObjectMapper mapper;
 
   public ResumeStateParser(ObjectMapper mapper) {
@@ -107,17 +128,22 @@ public class ResumeStateParser {
       if (linkedin.isEmpty() && linkedinMatcher.find()) {
         linkedin = linkedinMatcher.group(1);
       }
-      if (name.isEmpty() && emailMatcher.reset().find() == false
-          && !line.contains("@") && !line.toLowerCase().contains("linkedin")
-          && line.chars().noneMatch(Character::isDigit)
-          && line.split("\\s+").length >= 2 && line.split("\\s+").length <= 5
-          && !line.contains("|")
+      // A name may sit on a "Name | Title | Location" line: only the first
+      // segment (before the first "|") is a name candidate. Without this,
+      // a name on such a line is skipped and a later heading ("EXECUTIVE
+      // SUMMARY" — 2 capitalised words) is misread as the name.
+      String nameCandidate = line.contains("|")
+          ? line.substring(0, line.indexOf('|')).trim() : line;
+      if (name.isEmpty() && !EMAIL.matcher(nameCandidate).find()
+          && !nameCandidate.contains("@") && !nameCandidate.toLowerCase().contains("linkedin")
+          && nameCandidate.chars().noneMatch(Character::isDigit)
+          && nameCandidate.split("\\s+").length >= 2 && nameCandidate.split("\\s+").length <= 5
           // A name is a proper noun: every word capitalised. Without this,
           // any 2-5 word lowercase line ("just some words") is misread as
           // the contact name and unstructured text looks structured.
-          && Arrays.stream(line.split("\\s+"))
+          && Arrays.stream(nameCandidate.split("\\s+"))
               .allMatch(w -> !w.isEmpty() && Character.isUpperCase(w.charAt(0)))) {
-        name = line;
+        name = nameCandidate;
       }
       if (location.isEmpty() && line.contains(",") && !line.contains("@")
           && YEAR.matcher(line).find() == false && name.equals(line) == false
@@ -189,17 +215,17 @@ public class ResumeStateParser {
           .replaceAll("[,|\\-–—]+$", "").trim();
     }
     if (title.contains(" | ")) {
-      String[] parts = title.split("\\s*\\|\\s*", 2);
-      title = parts[0].trim();
-      company = parts[1].trim();
+      String[] parts = splitTitleCompany(title, "\\s*\\|\\s*");
+      title = parts[0];
+      company = parts[1];
     } else if (title.toLowerCase().contains(" at ")) {
       String[] parts = title.split("(?i)\\s+at\\s+", 2);
       title = parts[0].trim();
       company = parts[1].trim();
     } else if (title.contains(" — ")) {
-      String[] parts = title.split("\\s+—\\s+", 2);
-      title = parts[0].trim();
-      company = parts[1].trim();
+      String[] parts = splitTitleCompany(title, "\\s+—\\s+");
+      title = parts[0];
+      company = parts[1];
     }
     item.put("title", title);
     item.put("company", company);
@@ -207,6 +233,60 @@ public class ResumeStateParser {
     item.put("endDate", endDate);
     item.set("bullets", mapper.createArrayNode());
     return item;
+  }
+
+  /**
+   * Split a "A | B | ..." (or "A — B — ...") header into {title, company}.
+   * The header may be title-first ("Junior Engineer | Difference Engine Co")
+   * or company-first ("Zillion Technologies/Navy Federal | Lead Engineer").
+   * Score the first two segments: swap when the first looks like a company
+   * and the second looks like a title. Further segments (location, dates
+   * the range regex missed) are dropped — the state has no field for them,
+   * and lumping them into the company is what produced the swapped fields.
+   * A location segment ("Remote", "Vienna, VA") is never a company.
+   */
+  private static String[] splitTitleCompany(String head, String separatorRegex) {
+    String[] parts = head.split(separatorRegex);
+    String first = parts[0].trim();
+    String second = parts.length > 1 ? parts[1].trim() : "";
+    boolean companyFirst = companyScore(first) > 0
+        && titleScore(second) > titleScore(first)
+        && companyScore(first) >= companyScore(second);
+    String titlePart = companyFirst ? second : first;
+    String companyPart = companyFirst ? first : second;
+    if (looksLikeLocation(companyPart)) {
+      companyPart = "";
+    }
+    return new String[]{titlePart, companyPart};
+  }
+
+  private static int companyScore(String segment) {
+    int score = 0;
+    for (String word : segment.toLowerCase().split("[^a-z0-9]+")) {
+      if (COMPANY_WORDS.contains(word)) {
+        score++;
+      }
+    }
+    return score;
+  }
+
+  private static int titleScore(String segment) {
+    int score = 0;
+    for (String word : segment.toLowerCase().split("[^a-z0-9]+")) {
+      if (TITLE_WORDS.contains(word)) {
+        score++;
+      }
+    }
+    return score;
+  }
+
+  private static boolean looksLikeLocation(String segment) {
+    String lower = segment.toLowerCase().trim();
+    if (LOCATION_WORDS.contains(lower)) {
+      return true;
+    }
+    // "City, ST" (e.g. "Vienna, VA") or "City, State".
+    return lower.matches("[a-z .'-]+,\\s*[a-z]{2,}");
   }
 
   private ArrayNode parseEducation(List<String> lines) {
@@ -273,7 +353,13 @@ public class ResumeStateParser {
         upper = upper.substring(0, upper.length() - 1);
       }
       return switch (upper) {
-        case "SUMMARY", "PROFILE", "OBJECTIVE", "ABOUT" -> SUMMARY;
+        case "SUMMARY", "PROFILE", "OBJECTIVE", "ABOUT",
+             // Common heading variants: without these, "EXECUTIVE SUMMARY"
+             // is read as the contact name (2 capitalised words) and the
+             // preview header shows the heading instead of the person's name.
+             "EXECUTIVE SUMMARY", "PROFESSIONAL SUMMARY", "CAREER SUMMARY",
+             "PROFESSIONAL PROFILE", "CAREER PROFILE",
+             "PROFESSIONAL OBJECTIVE", "CAREER OBJECTIVE" -> SUMMARY;
         case "EXPERIENCE", "WORK EXPERIENCE", "WORK HISTORY", "EMPLOYMENT",
              "PROFESSIONAL EXPERIENCE", "EMPLOYMENT HISTORY" -> EXPERIENCE;
         case "EDUCATION", "EDUCATION & CERTIFICATIONS", "EDUCATION AND CERTIFICATIONS" -> EDUCATION;
