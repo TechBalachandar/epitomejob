@@ -1,0 +1,61 @@
+name: Agent implementation task
+description: Create a scoped, evidence-based task for TheVoper
+title: "[Agent] "
+labels: ["agent-task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for work assigned to TheVoper. Keep one independently reviewable deliverable per issue.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / requirement
+      description: What needs to change and why?
+      placeholder: Describe the current behavior and desired outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable, testable outcomes.
+      placeholder: |
+        - [ ] Given ..., when ..., then ...
+        - [ ] Authorization and owner isolation are verified.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and constraints
+      description: Include modules, APIs, migrations, compatibility, and explicit non-goals.
+    validations:
+      required: true
+  - type: dropdown
+    id: base
+    attributes:
+      label: Target integration branch
+      options:
+        - qa
+        - main
+      default: 0
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Required verification
+      description: Name relevant tests, security checks, and evidence expected in the PR.
+      placeholder: Unit + integration + E2E tests as applicable; report exact commands and commit SHA.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmations
+      options:
+        - label: No production deployment or production credentials are required.
+          required: true
+        - label: No new paid service or external LLM provider is required without separate approval.
+          required: true
