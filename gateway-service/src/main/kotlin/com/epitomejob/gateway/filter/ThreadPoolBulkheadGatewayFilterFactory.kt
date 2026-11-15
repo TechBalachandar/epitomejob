@@ -10,8 +10,8 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
 
 /**
- * Thread-pool bulkhead filter for slow downstreams — applied only to the
- * `/coach/**` route, whose calls reach the agent-brain LLM and can
+ * Thread-pool bulkhead filter for slow downstreams — applied only to routes
+ * under `/coach/`, whose calls reach the agent-brain LLM and can
  * take seconds.
  *
  * Why a separate filter: the reactive gateway must never block its Netty

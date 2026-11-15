@@ -15,7 +15,7 @@ import java.nio.charset.StandardCharsets
 
 /**
  * Template registry: three templates stored as classpath HTML resources
- * (templates/*.html) plus a JSON layout descriptor each. Rendering is a
+ * (one `.html` file each under `templates/`) plus a JSON layout descriptor each. Rendering is a
  * plain placeholder substitution over the filled state — no template
  * engine dependency — with HTML-escaping of every user value.
  */

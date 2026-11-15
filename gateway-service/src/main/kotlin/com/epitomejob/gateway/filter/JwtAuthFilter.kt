@@ -23,7 +23,7 @@ import java.nio.charset.StandardCharsets
  * also runs before the per-route `RequestRateLimiter`, which keys on
  * the user id this filter sets).
  *
- * - `/auth/**` and `/actuator/**` are public — no token needed.
+ * - Paths under `/auth/` and `/actuator/` are public — no token needed.
  * - Every other route requires a valid Bearer access token: missing
  *   header, expired token, bad signature, malformed token, or a refresh
  *   token used as an API credential all return `401` with an

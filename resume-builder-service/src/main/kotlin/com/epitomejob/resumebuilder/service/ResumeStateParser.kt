@@ -15,8 +15,8 @@ import java.util.regex.Pattern
  * read from the top lines; sections are found by heading lines
  * (SUMMARY / EXPERIENCE / EDUCATION / SKILLS and common variants);
  * experience items start at a line carrying a date range or a
- * "Title at Company" / "Title | Company" header, with •/-/* lines as
- * bullets; education lines split on commas; skills split on commas,
+ * "Title at Company" / "Title | Company" header, with lines starting
+ * with •, -, or * as bullets; education lines split on commas; skills split on commas,
  * semicolons and bullets.
  */
 @Service
