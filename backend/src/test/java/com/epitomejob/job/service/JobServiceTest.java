@@ -3,6 +3,7 @@ package com.epitomejob.job.service;
 import com.epitomejob.job.dto.JobDto;
 import com.epitomejob.job.model.Job;
 import com.epitomejob.job.repository.JobRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -157,14 +158,17 @@ class JobServiceTest {
 
   @Test
   void adzunaProviderThrowsNamingMissingEnvVars() {
-    AdzunaJobProvider missing = new AdzunaJobProvider(key -> null);
+    AdzunaJobProvider missing = new AdzunaJobProvider(key -> null, url -> "{}", new ObjectMapper());
     IllegalStateException ex = assertThrows(IllegalStateException.class,
         () -> missing.search(null, null, null, null, null, PageRequest.of(0, 20)));
     assertTrue(ex.getMessage().contains("ADZUNA_APP_ID"));
     assertTrue(ex.getMessage().contains("ADZUNA_APP_KEY"));
 
-    AdzunaJobProvider present = new AdzunaJobProvider(key -> "set");
-    assertThrows(UnsupportedOperationException.class,
-        () -> present.search(null, null, null, null, null, PageRequest.of(0, 20)));
+    // The W2 stub is gone: with env vars present the live provider calls the
+    // fetcher instead of throwing UnsupportedOperationException.
+    AdzunaJobProvider present = new AdzunaJobProvider(key -> "set",
+        url -> "{\"count\":0,\"results\":[]}", new ObjectMapper());
+    Page<Job> page = present.search(null, null, null, null, null, PageRequest.of(0, 20));
+    assertEquals(0, page.getTotalElements());
   }
 }
