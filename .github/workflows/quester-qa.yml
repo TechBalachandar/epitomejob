@@ -5,8 +5,7 @@
 # gateway/web health), then a triage/report job. Triage never fails
 # the run: it is reporting only.
 #
-# Install: cp agents/quester-qa.yml .github/workflows/quester-qa.yml
-# (the automation cannot write .github/workflows/ directly).
+# Canonical workflow source: this file. Keep agent instructions in agents/README.md.
 name: Quester QA
 
 on:
@@ -98,6 +97,21 @@ jobs:
         working-directory: web
         run: pnpm test
 
+  mcp-tests:
+    name: MCP service tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install MCP service dependencies
+        run: pip install -r mcp-service/requirements.txt
+      - name: Run MCP service tests
+        working-directory: mcp-service
+        run: python -m pytest tests -q
+
   web-e2e:
     name: Web E2E tests
     runs-on: ubuntu-latest
@@ -151,7 +165,7 @@ jobs:
 
   triage:
     name: Quester QA report
-    needs: [backend, python-tests, python-evals, web-unit, web-e2e, smoke]
+    needs: [backend, python-tests, python-evals, mcp-tests, web-unit, web-e2e, smoke]
     if: always()
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -167,7 +181,7 @@ jobs:
           python3 - <<'PY'
           import json, os
           needs = json.loads(os.environ["NEEDS_JSON"])
-          order = ["backend", "python-tests", "python-evals", "web-unit", "web-e2e", "smoke"]
+          order = ["backend", "python-tests", "python-evals", "mcp-tests", "web-unit", "web-e2e", "smoke"]
           failed = [j for j in order if needs.get(j, {}).get("result") not in ("success", "skipped")]
           passed = [j for j in order if needs.get(j, {}).get("result") == "success"]
           skipped = [j for j in order if needs.get(j, {}).get("result") == "skipped"]
