@@ -141,7 +141,8 @@ jobs:
           docker compose logs gateway --tail 100
           exit 1
       - name: Check web homepage
-        run: curl -fsS -o /dev/null -w "web: %{http_code}\n" http://localhost:3000
+        run: |
+          curl -fsS -o /dev/null -w "web: %{http_code}\n" http://localhost:3000
       - name: Check jobs endpoint through the gateway
         run: curl -fsS "http://localhost:8080/jobs?page=0&size=5" | head -c 500; echo
       - name: Tear down
