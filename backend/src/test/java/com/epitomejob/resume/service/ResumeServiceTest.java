@@ -242,6 +242,42 @@ class ResumeServiceTest {
     assertEquals(List.of(resume), service().listMine());
   }
 
+  /**
+   * P0 #16: the list is scoped to the authenticated user. The service must
+   * ask the repository for the CALLER's id — never another user's id — so
+   * user A can never be handed user B's rows.
+   */
+  @Test
+  void listMineScopesQueryToAuthenticatedUser() {
+    authenticate();
+    Resume mine = new Resume(USER_ID, "u1/f.pdf", "resume.pdf", "pdf", 100);
+    when(resumes.findByUserIdOrderByCreatedAtDesc(USER_ID)).thenReturn(List.of(mine));
+
+    List<Resume> result = service().listMine();
+
+    verify(resumes).findByUserIdOrderByCreatedAtDesc(USER_ID);
+    assertEquals(List.of(mine), result, "only the caller's own resumes are listed");
+    assertTrue(result.stream().allMatch(r -> r.getUserId().equals(USER_ID)),
+        "no resume belonging to another user is ever returned");
+  }
+
+  /**
+   * P0 #16: an upload is stored under the authenticated user's id. A resume
+   * uploaded while logged in as user A must never be filed under user B.
+   */
+  @Test
+  void uploadStoresResumeUnderAuthenticatedUserId() throws Exception {
+    authenticate();
+    when(resumes.save(any())).thenAnswer(inv -> inv.getArgument(0));
+    var file = new MockMultipartFile("file", "resume.pdf", "application/pdf", realPdfBytes());
+
+    Resume saved = service().upload(file);
+
+    assertEquals(USER_ID, saved.getUserId(), "upload is filed under the caller, not anyone else");
+    assertTrue(saved.getBlobPath().startsWith(USER_ID.toString() + "/"),
+        "the blob path is namespaced by the caller's id");
+  }
+
   @Test
   void getParsedTextReturnsOwnedResumeWithText() {
     authenticate();

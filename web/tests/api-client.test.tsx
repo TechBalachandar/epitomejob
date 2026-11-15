@@ -14,8 +14,10 @@ import {
   restoreSession,
   signOut,
   useProfile,
+  useResumes,
 } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
+import { queryClient } from "@/lib/query-client";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -155,11 +157,16 @@ describe("401 refresh + retry", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { result } = renderHook(() => useProfile(), { wrapper });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(result.current.error).toMatchObject({ status: 401 });
-    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+    // The session ends (logout clears the user), which disables the
+    // profile query — it must not refetch for the logged-out user, so
+    // exactly one profile call + one refresh attempt happen, and the
+    // request fails with the session ended.
+    await waitFor(() =>
+      expect(useAuthStore.getState().isAuthenticated).toBe(false),
+    );
     expect(useAuthStore.getState().accessToken).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.current.isFetching).toBe(false);
   });
 
   it("concurrent 401s share a single refresh call", async () => {
@@ -271,6 +278,93 @@ describe("signOut", () => {
 
     await signOut();
     expect(useAuthStore.getState().isAuthenticated).toBe(false);
+  });
+});
+
+describe("P0 #16 — switching users must not leak cached resumes", () => {
+  afterEach(() => {
+    queryClient.clear();
+  });
+
+  it("signOut clears the cached query data", async () => {
+    // Seed the app-level cache as if user A had loaded their resumes.
+    queryClient.setQueryData(["resumes", "me", "user-a"], [{ id: "r-a" }]);
+    useAuthStore.getState().login({
+      userId: "user-a",
+      email: "a@example.com",
+      role: "USER",
+      accessToken: "token-a",
+    });
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(() => jsonResponse({ status: "logged out" })),
+    );
+
+    await signOut();
+
+    expect(queryClient.getQueryData(["resumes", "me", "user-a"])).toBeUndefined();
+  });
+
+  it("a successful login clears the previous user's cached data", async () => {
+    queryClient.setQueryData(["resumes", "me", "user-a"], [{ id: "r-a" }]);
+    vi.stubGlobal(
+      "fetch",
+      mockFetch((url) => {
+        expect(url).toBe("/api/auth/login");
+        return jsonResponse({
+          accessToken: "x.y.z",
+          expiresInMs: 900_000,
+          userId: "user-b",
+          email: "b@example.com",
+          role: "USER",
+        });
+      }),
+    );
+
+    await loginRequest({ email: "b@example.com", password: "secret123" });
+
+    expect(queryClient.getQueryData(["resumes", "me", "user-a"])).toBeUndefined();
+  });
+
+  it("switching users refetches the resume list instead of serving the old user's cache", async () => {
+    const resumesA = [
+      { id: "r-a", label: "A resume", fileName: "a.pdf", status: "READY" },
+    ];
+    const resumesB = [
+      { id: "r-b", label: "B resume", fileName: "b.pdf", status: "READY" },
+    ];
+    const fetchMock = mockFetch((url) => {
+      if (url === "/api/resumes/me") {
+        const token = useAuthStore.getState().accessToken;
+        return jsonResponse(token === "token-a" ? resumesA : resumesB);
+      }
+      return jsonResponse({ message: "Not found" }, 404);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    useAuthStore.getState().login({
+      userId: "user-a",
+      email: "a@example.com",
+      role: "USER",
+      accessToken: "token-a",
+    });
+    const { result, rerender } = renderHook(() => useResumes(), { wrapper });
+    await waitFor(() => expect(result.current.data).toEqual(resumesA));
+
+    // Switch to user B in the same session (no page reload).
+    useAuthStore.getState().login({
+      userId: "user-b",
+      email: "b@example.com",
+      role: "USER",
+      accessToken: "token-b",
+    });
+    rerender();
+    await waitFor(() => expect(result.current.data).toEqual(resumesB));
+
+    // One fetch per user — user B is never served user A's cached list.
+    expect(
+      fetchMock.mock.calls.filter(([url]) => url === "/api/resumes/me").length,
+    ).toBe(2);
   });
 });
 
