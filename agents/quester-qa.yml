@@ -1,7 +1,10 @@
 # Quester QA — regression + smoke after every commit to the qa branch.
 #
 # Runs the SAME five suites as .github/workflows/quester.yml (same
-# steps/commands, same assertions) plus a smoke job (compose up +
+# steps/commands, same assertions) plus a gateway job (the root platform
+# aggregator: common + Eureka + gateway-service — CI never ran these
+# tests, which is how the RouteConfigTest failures in issue #21 passed
+# CI green while failing on the Mac) plus a smoke job (compose up +
 # gateway/web health), then a triage/report job. Triage never fails
 # the run: it is reporting only.
 #
@@ -46,6 +49,31 @@ jobs:
         with:
           name: backend-surefire-reports
           path: backend/target/surefire-reports/
+
+  gateway:
+    name: Gateway tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: pom.xml
+      - name: Run platform tests (common + Eureka + gateway)
+        # Root aggregator only: libs/epitomejob-common, eureka-server,
+        # gateway-service. No Docker needed (Eureka is disabled in the
+        # gateway tests). Added for issue #21: CI never ran the gateway
+        # tests, so RouteConfigTest failed on the Mac while CI stayed green.
+        run: mvn -B verify
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-surefire-reports
+          path: gateway-service/target/surefire-reports/
 
   python-tests:
     name: Agent-brain tests
@@ -180,7 +208,7 @@ jobs:
 
   triage:
     name: Quester QA report
-    needs: [backend, python-tests, python-evals, web-unit, web-e2e, smoke]
+    needs: [backend, gateway, python-tests, python-evals, web-unit, web-e2e, smoke]
     if: always()
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -196,7 +224,7 @@ jobs:
           python3 - <<'PY'
           import json, os
           needs = json.loads(os.environ["NEEDS_JSON"])
-          order = ["backend", "python-tests", "python-evals", "web-unit", "web-e2e", "smoke"]
+          order = ["backend", "gateway", "python-tests", "python-evals", "web-unit", "web-e2e", "smoke"]
           failed = [j for j in order if needs.get(j, {}).get("result") not in ("success", "skipped")]
           passed = [j for j in order if needs.get(j, {}).get("result") == "success"]
           skipped = [j for j in order if needs.get(j, {}).get("result") == "skipped"]
