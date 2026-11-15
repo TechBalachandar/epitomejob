@@ -1,6 +1,6 @@
-package com.epitomejob.common;
+package com.epitomejob.common
 
-import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonInclude
 
 /**
  * Uniform error body, copied field-for-field from the monolith
@@ -14,5 +14,4 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *                (may be null when no trace id was present)
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record ApiError(String code, String message, String traceId) {
-}
+data class ApiError(val code: String, val message: String, val traceId: String?)
