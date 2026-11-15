@@ -122,6 +122,13 @@ jobs:
       - name: Typecheck
         working-directory: web
         run: pnpm exec tsc --noEmit
+      - name: Production build (next build)
+        # The web Dockerfile runs `pnpm build`, but no CI job ever did — the
+        # Playwright E2E job runs `pnpm dev`. A failing production build
+        # (lint, prerender) would only surface inside the smoke compose
+        # build, with no clear error. Prove it here, with a clear log.
+        working-directory: web
+        run: pnpm build
       - name: Run web unit tests
         working-directory: web
         run: pnpm test
@@ -179,8 +186,17 @@ jobs:
           # down -v` on the Mac still cannot delete the shared data.
           docker volume create backend_pgdata
           docker volume create backend_rustfsdata
-      - name: Build and start the stack
-        run: docker compose up -d --build
+      - name: Validate compose config
+        # Fails fast with a clear message if the compose file itself is
+        # invalid, instead of hiding behind a build/start failure.
+        run: docker compose config -q
+      - name: Build the stack images
+        # Build separately from `up`, with plain progress: if an image
+        # fails to build, the failing service and its error are explicit
+        # in this step's log instead of buried in a combined up --build.
+        run: docker compose build --progress=plain
+      - name: Start the stack
+        run: docker compose up -d
       - name: Wait for gateway health
         run: |
           for i in $(seq 1 60); do
@@ -201,7 +217,8 @@ jobs:
           # Run-log downloads return 403, so print the failure here: the
           # exact compose/service error is otherwise invisible.
           docker compose ps -a || true
-          docker compose logs --tail=100 || true
+          docker compose logs --tail=200 || true
+          docker images || true
       - name: Tear down
         if: always()
         run: docker compose down
