@@ -24,6 +24,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Eureka is disabled for this test (no registry is running under test);
  * route definitions do not need a live registry to be asserted.
+ *
+ * <p>14 routes. Twelve point at the monolith (lb://epitomejob-backend);
+ * {@code resume-builder} points at the Resume Builder service
+ * (lb://resume-builder-service); {@code mcp} is deliberately a static
+ * http:// URI (the Python mcp-service does not register with Eureka, so
+ * discovery cannot resolve it — see the header comment in
+ * application.yml).
  */
 @SpringBootTest(properties = {
     "eureka.client.enabled=false",
@@ -31,7 +38,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 })
 class RouteConfigTest {
 
-  // Path -> destination, from the monolith's controllers at main b59dc45.
+  // Path -> destination, from the monolith's controllers at main b59dc45,
+  // plus the resume-builder route (RB1 split, added in ba52bddc).
   private static final Map<String, String> EXPECTED_ROUTES = Map.ofEntries(
       Map.entry("auth", "/auth/**"),
       Map.entry("profiles", "/profiles/**"),
@@ -45,7 +53,8 @@ class RouteConfigTest {
       Map.entry("notifications", "/notifications/**"),
       Map.entry("billing", "/billing/**"),
       Map.entry("plans", "/plans/**"),
-      Map.entry("mcp", "/mcp/**"));
+      Map.entry("mcp", "/mcp/**"),
+      Map.entry("resume-builder", "/resume-builder/**"));
 
   @Autowired
   private RouteDefinitionLocator routeDefinitionLocator;
@@ -92,8 +101,12 @@ class RouteConfigTest {
 
   @Test
   void monolithRoutesUseDiscoveryNotAHardcodedHost() {
+    // The 12 monolith routes resolve the backend through Eureka. The two
+    // non-monolith routes are asserted separately: mcp is a static http://
+    // URI by design (see mcpRoutePointsAtTheMcpService), resume-builder is
+    // lb://resume-builder-service (see resumeBuilderRoutePointsAtTheResumeBuilderService).
     EXPECTED_ROUTES.keySet().stream()
-        .filter(id -> !id.equals("mcp"))
+        .filter(id -> !id.equals("mcp") && !id.equals("resume-builder"))
         .forEach(id -> {
           var uri = routeById(id).getUri();
           assertEquals("lb", uri.getScheme(), "Route " + id + " must use lb://");
@@ -104,9 +117,23 @@ class RouteConfigTest {
 
   @Test
   void mcpRoutePointsAtTheMcpService() {
+    // Deliberately NOT lb://: the Python mcp-service does not register with
+    // Eureka (no Java client), so discovery cannot resolve it. The name
+    // mcp-server resolves via compose DNS and the k8s Service of the same
+    // name. See the header comment in application.yml.
     var uri = routeById("mcp").getUri();
+    assertEquals("http", uri.getScheme());
+    assertEquals("mcp-server", uri.getHost());
+    assertEquals(8001, uri.getPort());
+  }
+
+  @Test
+  void resumeBuilderRoutePointsAtTheResumeBuilderService() {
+    // RB1 split: the Resume Builder is its own Eureka service, so the
+    // route uses discovery like the monolith routes, with its own host.
+    var uri = routeById("resume-builder").getUri();
     assertEquals("lb", uri.getScheme());
-    assertEquals("mcp-service", uri.getHost());
+    assertEquals("resume-builder-service", uri.getHost());
   }
 
   @Test
@@ -161,6 +188,10 @@ class RouteConfigTest {
           id + ": retry must apply to GETs only");
       var cb = route.getFilters().stream()
           .filter(f -> f.getName().equals("CircuitBreaker")).findFirst().orElseThrow();
+      // Assert the key exists first: a missing fallbackUri must fail naming
+      // the route, not throw an NPE from the startsWith call below.
+      assertTrue(cb.getArgs().containsKey("fallbackUri"),
+          id + ": circuit breaker must define a fallbackUri");
       assertTrue(((String) cb.getArgs().get("fallbackUri")).startsWith("forward:/fallback/"),
           id + ": circuit breaker must fall back to a local controller");
       assertTrue(cb.getArgs().containsKey("statusCodes"),
