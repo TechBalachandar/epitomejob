@@ -1,6 +1,6 @@
 # Quester QA — regression + smoke after every commit to the qa branch.
 #
-# Runs the SAME five suites as .github/workflows/quester.yml (same
+# Runs backend, agent-brain tests/evals, MCP tests, web unit/E2E, and smoke checks (same
 # steps/commands, same assertions) plus a smoke job (compose up +
 # gateway/web health), then a triage/report job. Triage never fails
 # the run: it is reporting only.
