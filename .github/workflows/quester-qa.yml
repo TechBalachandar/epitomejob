@@ -1,7 +1,10 @@
 # Quester QA — regression + smoke after every commit to the qa branch.
 #
 # Runs the SAME five suites as .github/workflows/quester.yml (same
-# steps/commands, same assertions) plus a smoke job (compose up +
+# steps/commands, same assertions) plus a gateway job (the root platform
+# aggregator: common + Eureka + gateway-service — CI never ran these
+# tests, which is how the RouteConfigTest failures in issue #21 passed
+# CI green while failing on the Mac) plus a smoke job (compose up +
 # gateway/web health), then a triage/report job. Triage never fails
 # the run: it is reporting only.
 #
@@ -46,6 +49,31 @@ jobs:
         with:
           name: backend-surefire-reports
           path: backend/target/surefire-reports/
+
+  gateway:
+    name: Gateway tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: pom.xml
+      - name: Run platform tests (common + Eureka + gateway)
+        # Root aggregator only: libs/epitomejob-common, eureka-server,
+        # gateway-service. No Docker needed (Eureka is disabled in the
+        # gateway tests). Added for issue #21: CI never ran the gateway
+        # tests, so RouteConfigTest failed on the Mac while CI stayed green.
+        run: mvn -B verify
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-surefire-reports
+          path: gateway-service/target/surefire-reports/
 
   python-tests:
     name: Agent-brain tests
@@ -129,6 +157,28 @@ jobs:
       - name: Prepare env (seed jobs, no keys needed)
         run: |
           if [ ! -f .env ]; then cp .env.example .env 2>/dev/null || true; fi
+          # The smoke test must not depend on Adzuna keys: force the seed
+          # provider so /jobs returns seeded rows deterministically.
+          # (.env.example selects adzuna with empty keys, which would make
+          # the jobs check fail naming the missing vars.)
+          if grep -q '^EPITOMEJOB_JOBS_PROVIDER=' .env; then
+            sed -i 's/^EPITOMEJOB_JOBS_PROVIDER=.*/EPITOMEJOB_JOBS_PROVIDER=seed/' .env
+          else
+            echo 'EPITOMEJOB_JOBS_PROVIDER=seed' >> .env
+          fi
+          grep '^EPITOMEJOB_JOBS_PROVIDER=' .env
+      - name: Create external volumes (fresh CI runner has none)
+        run: |
+          # pgdata/rustfsdata are EXTERNAL volumes (backend_pgdata /
+          # backend_rustfsdata) that exist on the dev Mac but not on a
+          # fresh runner. Compose fails outright on a missing external
+          # volume, so create them first. On a fresh volume the postgres
+          # init script creates the temporal + temporal_visibility DBs.
+          # `external: true` is deliberately kept in docker-compose.yml
+          # (not changed to a plain named volume) so `docker compose
+          # down -v` on the Mac still cannot delete the shared data.
+          docker volume create backend_pgdata
+          docker volume create backend_rustfsdata
       - name: Build and start the stack
         run: docker compose up -d --build
       - name: Wait for gateway health
@@ -145,13 +195,20 @@ jobs:
           curl -fsS -o /dev/null -w "web: %{http_code}\n" http://localhost:3000
       - name: Check jobs endpoint through the gateway
         run: curl -fsS "http://localhost:8080/jobs?page=0&size=5" | head -c 500; echo
+      - name: Dump compose status and logs on failure
+        if: failure()
+        run: |
+          # Run-log downloads return 403, so print the failure here: the
+          # exact compose/service error is otherwise invisible.
+          docker compose ps -a || true
+          docker compose logs --tail=100 || true
       - name: Tear down
         if: always()
         run: docker compose down
 
   triage:
     name: Quester QA report
-    needs: [backend, python-tests, python-evals, web-unit, web-e2e, smoke]
+    needs: [backend, gateway, python-tests, python-evals, web-unit, web-e2e, smoke]
     if: always()
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -167,7 +224,7 @@ jobs:
           python3 - <<'PY'
           import json, os
           needs = json.loads(os.environ["NEEDS_JSON"])
-          order = ["backend", "python-tests", "python-evals", "web-unit", "web-e2e", "smoke"]
+          order = ["backend", "gateway", "python-tests", "python-evals", "web-unit", "web-e2e", "smoke"]
           failed = [j for j in order if needs.get(j, {}).get("result") not in ("success", "skipped")]
           passed = [j for j in order if needs.get(j, {}).get("result") == "success"]
           skipped = [j for j in order if needs.get(j, {}).get("result") == "skipped"]
