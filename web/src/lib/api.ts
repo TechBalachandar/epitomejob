@@ -37,6 +37,7 @@ import {
 } from "./resume-builder";
 
 import { buildJobsQuery } from "./jobs";
+import { clearCachedUserData } from "./query-client";
 import type {
   AnswerDto,
   Job,
@@ -74,7 +75,18 @@ export function refreshAccessToken(): Promise<boolean> {
       });
       if (!res.ok) return false;
       const data = (await res.json()) as AuthResponse;
-      useAuthStore.getState().setAccessToken(data.accessToken);
+      // Restore the full session, not just the token: the refresh
+      // response carries the user identity, so a page reload re-hydrates
+      // the store (userId/email/role) as well as the access token. For
+      // the 401-retry path this is a no-op (same user); for a reload it
+      // is what keeps the user logged in. Logout always clears the
+      // refresh cookie, so a refresh can never re-login a logged-out user.
+      useAuthStore.getState().login({
+        userId: data.userId,
+        email: data.email,
+        role: data.role,
+        accessToken: data.accessToken,
+      });
       return true;
     } catch {
       return false;
@@ -84,6 +96,15 @@ export function refreshAccessToken(): Promise<boolean> {
     refreshPromise = null;
   });
   return refreshPromise;
+}
+
+/** Restore the session on app load: refresh via the httpOnly cookie and
+ * re-hydrate the user. Returns true when a session is now active. The
+ * AppShell redirects to /login only when this returns false — a reload
+ * with a live refresh cookie keeps the user on the same page. */
+export async function restoreSession(): Promise<boolean> {
+  const ok = await refreshAccessToken();
+  return ok && useAuthStore.getState().isAuthenticated;
 }
 
 async function apiFetch<T>(
@@ -130,10 +151,14 @@ export async function loginRequest(input: {
   email: string;
   password: string;
 }): Promise<AuthResponse> {
-  return apiFetch<AuthResponse>("/auth/login", {
+  const session = await apiFetch<AuthResponse>("/auth/login", {
     method: "POST",
     body: JSON.stringify(input),
   });
+  // A new identity is signing in: drop everything cached for the previous
+  // user so no stale row (resumes, profile, tracker) can be shown to them.
+  clearCachedUserData();
+  return session;
 }
 
 export async function registerRequest(input: {
@@ -141,10 +166,12 @@ export async function registerRequest(input: {
   fullName: string;
   password: string;
 }): Promise<AuthResponse> {
-  return apiFetch<AuthResponse>("/auth/register", {
+  const session = await apiFetch<AuthResponse>("/auth/register", {
     method: "POST",
     body: JSON.stringify(input),
   });
+  clearCachedUserData();
+  return session;
 }
 
 /** Revoke the refresh token at the backend and clear the local session. */
@@ -155,23 +182,33 @@ export async function signOut(): Promise<void> {
     // Logout is best-effort: the local session is cleared either way.
   }
   useAuthStore.getState().logout();
+  // Drop every cached query so the next login starts from an empty cache
+  // and the signed-out user's data never lingers in memory.
+  clearCachedUserData();
 }
 
 // --- Profile ---------------------------------------------------------------
 
 export function useProfile() {
+  // The key carries the user id (P0 #16): a cached profile for one user
+  // must never be served to another user after an account switch. The
+  // query is disabled when signed out, so a logout (userId -> null) does
+  // not trigger a refetch for the logged-out user.
+  const userId = useAuthStore((s) => s.userId);
   return useQuery({
-    queryKey: ["profile", "me"],
+    queryKey: ["profile", "me", userId],
     queryFn: () => apiFetch<Profile>("/profiles/me"),
+    enabled: userId !== null,
   });
 }
 
 export function useUpdateProfile() {
   const queryClient = useQueryClient();
+  const userId = useAuthStore((s) => s.userId);
   return useMutation({
     mutationFn: (patch: ProfileUpdate) => updateProfile(patch),
     onSuccess: (profile) => {
-      queryClient.setQueryData(["profile", "me"], profile);
+      queryClient.setQueryData(["profile", "me", userId], profile);
     },
   });
 }
@@ -225,10 +262,17 @@ export async function fetchMyEntitlement(): Promise<Entitlement> {
 // --- Resumes ---------------------------------------------------------------
 
 export function useResumes(enabled = true) {
+  // The key carries the user id (P0 #16): a cached resume list for one
+  // user must never be served to another user after an account switch.
+  // The ["resumes", "me"] invalidations in the upload/rename mutations
+  // still match this key (prefix match), so they keep working. The query
+  // is disabled when signed out, so a logout (userId -> null) does not
+  // trigger a refetch for the logged-out user.
+  const userId = useAuthStore((s) => s.userId);
   return useQuery({
-    queryKey: ["resumes", "me"],
+    queryKey: ["resumes", "me", userId],
     queryFn: () => apiFetch<ResumeItem[]>("/resumes/me"),
-    enabled,
+    enabled: enabled && userId !== null,
   });
 }
 

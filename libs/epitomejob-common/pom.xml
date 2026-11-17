@@ -23,11 +23,35 @@
 
   <properties>
     <java.version>21</java.version>
+    <!-- Kotlin 2.1.20 (Kotlin 2.x). Boot 3.5.4 manages 1.9.25; the version is
+         customised via the kotlin.version property, the documented Spring
+         Boot path — Boot 3.5 supports Kotlin 1.9, 2.0 and 2.1. This pins the
+         kotlin-bom, kotlin-maven-plugin and kotlin-stdlib consistently. -->
+    <kotlin.version>2.1.20</kotlin.version>
     <!-- Same JJWT line as the monolith (backend/pom.xml, verified at b59dc45). -->
     <jjwt.version>0.12.6</jjwt.version>
   </properties>
 
   <dependencies>
+    <!-- Kotlin: stdlib + reflect (Spring/Jackson Kotlin support).
+         Version is pinned to 2.1.20 (Kotlin 2.x) via the kotlin.version
+         property above — see the properties comment. -->
+    <dependency>
+      <groupId>org.jetbrains.kotlin</groupId>
+      <artifactId>kotlin-stdlib</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains.kotlin</groupId>
+      <artifactId>kotlin-reflect</artifactId>
+    </dependency>
+
+    <!-- Jackson Kotlin module: needed to (de)serialise Kotlin data classes
+         (ApiError and any future DTOs) — plain Jackson only sees getters. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.module</groupId>
+      <artifactId>jackson-module-kotlin</artifactId>
+    </dependency>
+
     <!-- WebFlux only: provides ServerWebExchange / WebFilter for TraceIdFilter. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -67,6 +91,56 @@
 
   <build>
     <plugins>
+      <!-- Kotlin (Maven + kotlin-maven-plugin). The kotlin-spring (all-open)
+           compiler plugin opens Spring-annotated classes (Kotlin classes are
+           final by default, which breaks Spring proxies). kotlin:compile runs
+           in process-sources, before maven-compiler-plugin, so mixed
+           Kotlin/Java sources compile together. -->
+      <plugin>
+        <groupId>org.jetbrains.kotlin</groupId>
+        <artifactId>kotlin-maven-plugin</artifactId>
+        <version>${kotlin.version}</version>
+        <executions>
+          <execution>
+            <id>compile</id>
+            <goals>
+              <goal>compile</goal>
+            </goals>
+            <configuration>
+              <sourceDirs>
+                <sourceDir>${project.basedir}/src/main/kotlin</sourceDir>
+                <sourceDir>${project.basedir}/src/main/java</sourceDir>
+              </sourceDirs>
+            </configuration>
+          </execution>
+          <execution>
+            <id>test-compile</id>
+            <goals>
+              <goal>test-compile</goal>
+            </goals>
+            <configuration>
+              <sourceDirs>
+                <sourceDir>${project.basedir}/src/test/kotlin</sourceDir>
+                <sourceDir>${project.basedir}/src/test/java</sourceDir>
+              </sourceDirs>
+            </configuration>
+          </execution>
+        </executions>
+        <configuration>
+          <jvmTarget>21</jvmTarget>
+          <javaParameters>true</javaParameters>
+          <compilerPlugins>
+            <plugin>spring</plugin>
+          </compilerPlugins>
+        </configuration>
+        <dependencies>
+          <dependency>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-maven-allopen</artifactId>
+            <version>${kotlin.version}</version>
+          </dependency>
+        </dependencies>
+      </plugin>
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>

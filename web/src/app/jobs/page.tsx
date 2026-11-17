@@ -104,6 +104,7 @@ export default function JobsPage() {
             <option value="MONSTER">Monster</option>
             <option value="NAUKRI">Naukri</option>
             <option value="COMPANY">Company site</option>
+            <option value="ADZUNA">Adzuna</option>
             <option value="SEED">Seed</option>
           </Select>
           <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">

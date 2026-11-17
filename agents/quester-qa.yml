@@ -1,0 +1,308 @@
+# Quester QA — regression + smoke after every commit to the qa branch.
+#
+# Runs the SAME five suites as .github/workflows/quester.yml (same
+# steps/commands, same assertions) plus a gateway job (the root platform
+# aggregator: common + Eureka + gateway-service — CI never ran these
+# tests, which is how the RouteConfigTest failures in issue #21 passed
+# CI green while failing on the Mac) plus a smoke job (compose up +
+# gateway/web health), then a triage/report job. Triage never fails
+# the run: it is reporting only.
+#
+# Install: cp agents/quester-qa.yml .github/workflows/quester-qa.yml
+# (the automation cannot write .github/workflows/ directly).
+name: Quester QA
+
+on:
+  push:
+    branches: [qa]
+  pull_request:
+    branches: [qa]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: quester-qa-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+      - name: Run backend tests + coverage gate
+        working-directory: backend
+        run: mvn -B verify
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-surefire-reports
+          path: backend/target/surefire-reports/
+
+  gateway:
+    name: Gateway tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: pom.xml
+      - name: Run platform tests (common + Eureka + gateway)
+        # Root aggregator only: libs/epitomejob-common, eureka-server,
+        # gateway-service. No Docker needed (Eureka is disabled in the
+        # gateway tests). Added for issue #21: CI never ran the gateway
+        # tests, so RouteConfigTest failed on the Mac while CI stayed green.
+        run: mvn -B verify
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-surefire-reports
+          path: gateway-service/target/surefire-reports/
+
+  python-tests:
+    name: Agent-brain tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install agent-brain dependencies
+        run: pip install -r agent-brain/requirements.txt
+      - name: Run agent-brain tests
+        run: python -m pytest agent-brain/tests -q
+
+  python-evals:
+    name: Agent-brain evals
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install agent-brain dependencies
+        run: pip install -r agent-brain/requirements.txt
+      - name: Run agent-brain evals
+        run: python -m pytest agent-brain/evals -q
+
+  web-unit:
+    name: Web unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Set up pnpm 10
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Install web dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        working-directory: web
+        run: pnpm exec tsc --noEmit
+      - name: Production build (next build)
+        # The web Dockerfile runs `pnpm build`, but no CI job ever did — the
+        # Playwright E2E job runs `pnpm dev`. A failing production build
+        # (lint, prerender) would only surface inside the smoke compose
+        # build, with no clear error. Prove it here, with a clear log.
+        working-directory: web
+        run: pnpm build
+      - name: Run web unit tests
+        working-directory: web
+        run: pnpm test
+
+  web-e2e:
+    name: Web E2E tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Set up pnpm 10
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Install web dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Run web E2E tests
+        working-directory: web
+        run: pnpm test:e2e
+
+  smoke:
+    name: Smoke test (compose up + health)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare env (seed jobs, no keys needed)
+        run: |
+          if [ ! -f .env ]; then cp .env.example .env 2>/dev/null || true; fi
+          # The smoke test must not depend on Adzuna keys: force the seed
+          # provider so /jobs returns seeded rows deterministically.
+          # (.env.example selects adzuna with empty keys, which would make
+          # the jobs check fail naming the missing vars.)
+          if grep -q '^EPITOMEJOB_JOBS_PROVIDER=' .env; then
+            sed -i 's/^EPITOMEJOB_JOBS_PROVIDER=.*/EPITOMEJOB_JOBS_PROVIDER=seed/' .env
+          else
+            echo 'EPITOMEJOB_JOBS_PROVIDER=seed' >> .env
+          fi
+          grep '^EPITOMEJOB_JOBS_PROVIDER=' .env
+      - name: Create external volumes (fresh CI runner has none)
+        run: |
+          # pgdata/rustfsdata are EXTERNAL volumes (backend_pgdata /
+          # backend_rustfsdata) that exist on the dev Mac but not on a
+          # fresh runner. Compose fails outright on a missing external
+          # volume, so create them first. On a fresh volume the postgres
+          # init script creates the temporal + temporal_visibility DBs.
+          # `external: true` is deliberately kept in docker-compose.yml
+          # (not changed to a plain named volume) so `docker compose
+          # down -v` on the Mac still cannot delete the shared data.
+          docker volume create backend_pgdata
+          docker volume create backend_rustfsdata
+      - name: Validate compose config
+        # Fails fast with a clear message if the compose file itself is
+        # invalid, instead of hiding behind a build/start failure.
+        run: docker compose config -q
+      - name: Build the stack images
+        # Build separately from `up`, with plain progress: if an image
+        # fails to build, the failing service and its error are explicit
+        # in this step's log instead of buried in a combined up --build.
+        run: docker compose build --progress=plain
+      - name: Start the stack
+        run: docker compose up -d
+      - name: Wait for gateway health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/actuator/health >/dev/null 2>&1; then echo "gateway healthy"; exit 0; fi
+            sleep 10
+          done
+          echo "gateway did not become healthy"
+          docker compose logs gateway --tail 100
+          exit 1
+      - name: Check web homepage
+        run: |
+          curl -fsS -o /dev/null -w "web: %{http_code}\n" http://localhost:3000
+      - name: Check jobs endpoint through the gateway
+        run: curl -fsS "http://localhost:8080/jobs?page=0&size=5" | head -c 500; echo
+      - name: Dump compose status and logs on failure
+        if: failure()
+        run: |
+          # Run-log downloads return 403, so print the failure here: the
+          # exact compose/service error is otherwise invisible.
+          docker compose ps -a || true
+          docker compose logs --tail=200 || true
+          docker images || true
+      - name: Tear down
+        if: always()
+        run: docker compose down
+
+  triage:
+    name: Quester QA report
+    needs: [backend, gateway, python-tests, python-evals, web-unit, web-e2e, smoke]
+    if: always()
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Compute results
+        id: suites
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          needs = json.loads(os.environ["NEEDS_JSON"])
+          order = ["backend", "gateway", "python-tests", "python-evals", "web-unit", "web-e2e", "smoke"]
+          failed = [j for j in order if needs.get(j, {}).get("result") not in ("success", "skipped")]
+          passed = [j for j in order if needs.get(j, {}).get("result") == "success"]
+          skipped = [j for j in order if needs.get(j, {}).get("result") == "skipped"]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"failed={','.join(failed)}\n")
+              f.write(f"passed={','.join(passed)}\n")
+              f.write(f"skipped={','.join(skipped)}\n")
+              f.write(f"any_failed={'true' if failed else 'false'}\n")
+              f.write(f"all_green={'true' if not failed and not skipped else 'false'}\n")
+          print(f"failed={failed} passed={passed} skipped={skipped}")
+          PY
+
+      - name: File or update QA failure issue
+        id: issue
+        if: steps.suites.outputs.any_failed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FAILED: ${{ steps.suites.outputs.failed }}
+          PASSED: ${{ steps.suites.outputs.passed }}
+        run: |
+          gh label create qa-agent --color "B60205" \
+            --description "Created by Quester (automated QA) for CI failures" 2>/dev/null || true
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          COMMIT_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
+          TITLE="[Quester QA] qa branch failure ${SHORT_SHA} — ${FAILED}"
+          EXISTING=$(gh issue list --label qa-agent --state open --limit 100 \
+            --json number,title --jq ".[] | select(.title | contains(\"${SHORT_SHA}\")) | .number" | head -n 1 || true)
+          BODY_FILE=$(mktemp)
+          cat > "${BODY_FILE}" <<EOF
+          ## Quester QA failure (qa branch)
+          - Commit: ${GITHUB_SHA} (${COMMIT_URL})
+          - Run: ${RUN_URL}
+          - Failing: ${FAILED}
+          - Passing: ${PASSED:-none}
+          - Trigger: ${GITHUB_EVENT_NAME}
+          EOF
+          if [ -n "${EXISTING}" ]; then
+            echo "Updating existing issue #${EXISTING} for ${SHORT_SHA}"
+            gh issue comment "${EXISTING}" --body-file "${BODY_FILE}" || echo "::warning::Could not comment on issue #${EXISTING}."
+            ISSUE_URL=$(gh issue view "${EXISTING}" --json url --jq .url || echo "")
+          else
+            echo "Creating new issue: ${TITLE}"
+            ISSUE_URL=$(gh issue create --title "${TITLE}" --label qa-agent \
+              --body-file "${BODY_FILE}" 2>/dev/null) || {
+              echo "::warning::Could not create the qa-agent issue. Failing: ${FAILED}. Run: ${RUN_URL}"
+              ISSUE_URL=""
+            }
+          fi
+          echo "issue_url=${ISSUE_URL}" >> "$GITHUB_OUTPUT"
+          echo "Issue: ${ISSUE_URL:-none (creation failed — see warning above)}"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Quester QA report (qa branch)"
+            echo ""
+            echo "- Commit: ${GITHUB_SHA}"
+            echo "- Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "- Failed: ${{ steps.suites.outputs.failed }}"
+            echo "- Passed: ${{ steps.suites.outputs.passed }}"
+            echo "- Issue: ${{ steps.issue.outputs.issue_url }}"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -12,11 +12,18 @@ describe("validateResumeFile", () => {
     expect(validateResumeFile(pdf())).toBeNull();
   });
 
-  it("rejects non-PDF files", () => {
+  it("accepts DOC and DOCX as well as PDF", () => {
     const docx = new File(["x"], "resume.docx", {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });
-    expect(validateResumeFile(docx)).toMatch(/PDF only/);
+    expect(validateResumeFile(docx)).toBeNull();
+    const doc = new File(["x"], "resume.doc", { type: "application/msword" });
+    expect(validateResumeFile(doc)).toBeNull();
+  });
+
+  it("rejects other file types", () => {
+    const txt = new File(["x"], "resume.txt", { type: "text/plain" });
+    expect(validateResumeFile(txt)).toMatch(/PDF, DOC, or DOCX/);
   });
 
   it("rejects a PDF over 10 MB", () => {

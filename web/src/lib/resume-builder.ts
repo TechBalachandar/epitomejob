@@ -250,6 +250,13 @@ const TOKEN_VALUES = (
   experience: renderExperience(state),
   education: renderEducation(state),
   skills: state.skills.join(", "),
+  // Backend template tokens (resume-builder-service templates use the
+  // *Html suffix; the web preview must substitute them too, or the
+  // sections render empty — the cleanup regex below strips any token
+  // that is not substituted).
+  experienceHtml: renderExperience(state),
+  educationHtml: renderEducation(state),
+  skillsHtml: state.skills.join(", "),
 });
 
 /**

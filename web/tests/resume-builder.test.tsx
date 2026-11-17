@@ -34,7 +34,7 @@ import {
   updateExperienceItem,
   validateBuilderFile,
 } from "@/lib/resume-builder";
-import type { ResumeBuilderState } from "@/lib/types";
+import type { BuilderTemplate, ResumeBuilderState } from "@/lib/types";
 import { TemplateGallery } from "@/components/resume-builder/template-gallery";
 import ResumeBuilderPage from "@/app/resume-builder/page";
 
@@ -186,6 +186,26 @@ describe("renderTemplateHtml", () => {
     expect(highlightPlaceholders("[X%]")).toContain("<mark");
     expect(html).toContain("[X%]");
     expect(html).toContain("background:#fde68a");
+  });
+
+  it("renders the backend template tokens ({{experienceHtml}} etc.)", () => {
+    // The resume-builder-service templates use the *Html suffix; the web
+    // preview must substitute them too, or Experience / Education / Skills
+    // render empty even though the state has the data (issue #10).
+    const backendStyle: BuilderTemplate = {
+      id: "modern",
+      name: "Modern",
+      description: "",
+      html: `<!doctype html><html><head><meta charset="utf-8"></head><body><h1>{{fullName}}</h1><h2>Summary</h2><p>{{summary}}</p><h2>Experience</h2>{{experienceHtml}}<h2>Education</h2>{{educationHtml}}<h2>Skills</h2><p>{{skillsHtml}}</p></body></html>`,
+    };
+    const html = renderTemplateHtml(backendStyle, sampleBuilderState());
+    expect(html).toContain("Alex Morgan");
+    expect(html).toContain("Meridian Care Technologies");
+    expect(html).toContain("George Mason University");
+    expect(html).toContain("Java, Spring Boot, Kafka");
+    expect(html).not.toContain("{{experienceHtml}}");
+    expect(html).not.toContain("{{educationHtml}}");
+    expect(html).not.toContain("{{skillsHtml}}");
   });
 
   it("falls back to the built-in layout for a token-less template html", () => {

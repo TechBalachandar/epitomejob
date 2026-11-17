@@ -138,8 +138,10 @@ describe("job source helpers", () => {
     expect(jobSourceLabel("MONSTER")).toBe("Monster");
     expect(jobSourceLabel("NAUKRI")).toBe("Naukri");
     expect(jobSourceLabel("COMPANY")).toBe("Company site");
+    expect(jobSourceLabel("ADZUNA")).toBe("Adzuna");
     expect(jobSourceLabel(undefined)).toBe("Seed");
     expect(applyLinkLabel("LINKEDIN")).toBe("Apply on LinkedIn");
+    expect(applyLinkLabel("ADZUNA")).toBe("Apply on Adzuna");
     expect(applyLinkLabel("COMPANY")).toBe("Apply on company site");
     expect(workAuthorizationLabel("H1B")).toBe("H-1B");
     expect(workAuthorizationLabel("US_CITIZEN")).toBe("US Citizen");
