@@ -115,7 +115,7 @@ class TemplateService(private val mapper: ObjectMapper) {
     sections.add("experience")
     sections.add("education")
     sections.add("skills")
-    layout.set("sections", sections)
+    layout.set<JsonNode>("sections", sections)
     return layout
   }
 

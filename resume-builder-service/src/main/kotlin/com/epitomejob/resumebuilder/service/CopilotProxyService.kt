@@ -49,11 +49,11 @@ class CopilotProxyService(
       clientRequest: JsonNode?, authorization: String): ResponseEntity<String> {
     val body = mapper.createObjectNode()
     if (clientRequest != null && clientRequest.isObject) {
-      body.setAll(clientRequest as ObjectNode)
+      body.setAll<JsonNode>(clientRequest as ObjectNode)
     }
     body.put("userId", SecurityUtil.currentUserId().toString())
     body.put("documentId", documentId.toString())
-    body.set("resumeState", state)
+    body.set<JsonNode>("resumeState", state)
     try {
       val response = agentBrainRestClient.post()
           .uri(AppConstants.Downstream.COPILOT_PATH)

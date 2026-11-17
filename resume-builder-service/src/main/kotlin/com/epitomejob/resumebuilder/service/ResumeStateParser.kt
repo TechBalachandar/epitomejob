@@ -1,5 +1,6 @@
 package com.epitomejob.resumebuilder.service
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ArrayNode
 import com.fasterxml.jackson.databind.node.ObjectNode
@@ -27,11 +28,11 @@ class ResumeStateParser(private val mapper: ObjectMapper) {
     val text = rawText ?: ""
     val lines = text.lines().map { it.trim() }
     val state = mapper.createObjectNode()
-    state.set("contact", parseContact(lines))
+    state.set<JsonNode>("contact", parseContact(lines))
     state.put("summary", parseSectionText(lines, Section.SUMMARY))
-    state.set("experience", parseExperience(lines))
-    state.set("education", parseEducation(lines))
-    state.set("skills", parseSkills(lines))
+    state.set<JsonNode>("experience", parseExperience(lines))
+    state.set<JsonNode>("education", parseEducation(lines))
+    state.set<JsonNode>("skills", parseSkills(lines))
     state.put("rawText", text)
     return state
   }
@@ -45,11 +46,11 @@ class ResumeStateParser(private val mapper: ObjectMapper) {
     contact.put("phone", "")
     contact.put("linkedin", "")
     contact.put("location", "")
-    state.set("contact", contact)
+    state.set<JsonNode>("contact", contact)
     state.put("summary", "")
-    state.set("experience", mapper.createArrayNode())
-    state.set("education", mapper.createArrayNode())
-    state.set("skills", mapper.createArrayNode())
+    state.set<JsonNode>("experience", mapper.createArrayNode())
+    state.set<JsonNode>("education", mapper.createArrayNode())
+    state.set<JsonNode>("skills", mapper.createArrayNode())
     state.put("rawText", "")
     return state
   }
@@ -188,7 +189,7 @@ class ResumeStateParser(private val mapper: ObjectMapper) {
     item.put("company", company)
     item.put("startDate", startDate)
     item.put("endDate", endDate)
-    item.set("bullets", mapper.createArrayNode())
+    item.set<JsonNode>("bullets", mapper.createArrayNode())
     return item
   }
 
