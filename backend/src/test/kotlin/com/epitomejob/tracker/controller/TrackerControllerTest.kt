@@ -7,6 +7,7 @@ import com.epitomejob.tracker.service.TrackerService
 import io.jsonwebtoken.Claims
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
@@ -61,7 +62,7 @@ class TrackerControllerTest {
   @Test
   fun createReturns201() {
     authenticate()
-    whenever(service.create(eq(JOB_ID), any())).thenReturn(dto())
+    whenever(service.create(eq(JOB_ID), anyOrNull())).thenReturn(dto())
 
     mockMvc.perform(post("/tracker")
         .header("Authorization", "Bearer test-token")
@@ -74,7 +75,7 @@ class TrackerControllerTest {
   @Test
   fun createDuplicateIs409() {
     authenticate()
-    whenever(service.create(eq(JOB_ID), any()))
+    whenever(service.create(eq(JOB_ID), anyOrNull()))
       .thenThrow(ResponseStatusException(HttpStatus.CONFLICT, "Job already saved in tracker"))
 
     mockMvc.perform(post("/tracker")

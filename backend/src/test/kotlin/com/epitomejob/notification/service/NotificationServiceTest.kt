@@ -136,7 +136,7 @@ class NotificationServiceTest {
     service().listMine(0, 0)
     verify(notifications, times(2))
       .findByUserId(any(), pageable.capture())
-    assertEquals(1, pageable.firstValue.pageSize)
+    assertEquals(1, pageable.lastValue.pageSize)
   }
 
   @Test

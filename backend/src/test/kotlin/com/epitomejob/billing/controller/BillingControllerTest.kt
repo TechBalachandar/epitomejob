@@ -13,6 +13,7 @@ import com.epitomejob.identity.service.JwtService
 import io.jsonwebtoken.Claims
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
@@ -184,7 +185,7 @@ class BillingControllerTest {
 
   @Test
   fun webhookNeedsNoAuth() {
-    whenever(service.handleWebhook(any(), any())).thenReturn(WebhookResponse(true))
+    whenever(service.handleWebhook(anyOrNull(), anyOrNull())).thenReturn(WebhookResponse(true))
 
     mockMvc.perform(post("/billing/webhook")
         .contentType(MediaType.APPLICATION_JSON)
@@ -195,7 +196,7 @@ class BillingControllerTest {
 
   @Test
   fun webhookUnknownSessionIs400() {
-    whenever(service.handleWebhook(any(), any()))
+    whenever(service.handleWebhook(anyOrNull(), anyOrNull()))
       .thenThrow(ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown checkout session"))
 
     mockMvc.perform(post("/billing/webhook")
