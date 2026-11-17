@@ -193,6 +193,6 @@ class ApprovalServiceTest {
     assertEquals(listOf(approval), service().pendingMine())
     val status = argumentCaptor<String>()
     verify(approvals).findByUserIdAndStatusOrderByExpiresAtAsc(any(), status.capture())
-    assertEquals("PENDING", status.value)
+    assertEquals("PENDING", status.firstValue)
   }
 }

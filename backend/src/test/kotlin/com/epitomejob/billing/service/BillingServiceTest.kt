@@ -159,8 +159,8 @@ class BillingServiceTest {
     assertNull(entitlement.firstValue.expiresAt)
     val session = argumentCaptor<CheckoutSession>()
     verify(sessions).save(session.capture())
-    assertNull(session.value.providerSessionId)
-    assertEquals("CREATED", session.value.status)
+    assertNull(session.firstValue.providerSessionId)
+    assertEquals("CREATED", session.firstValue.status)
   }
 
   @Test
@@ -180,8 +180,8 @@ class BillingServiceTest {
     assertNull(response.checkoutUrl)
     val session = argumentCaptor<CheckoutSession>()
     verify(sessions).save(session.capture())
-    assertEquals("fake_abc", session.value.providerSessionId)
-    assertEquals("CREATED", session.value.status)
+    assertEquals("fake_abc", session.firstValue.providerSessionId)
+    assertEquals("CREATED", session.firstValue.status)
   }
 
   @Test
