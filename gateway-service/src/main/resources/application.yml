@@ -90,11 +90,7 @@ spring:
                   args:
                     name: backend
                     fallbackUri: forward:/fallback/backend
-                    statusCodes:
-                      - 500
-                      - 502
-                      - 503
-                      - 504
+                    statusCodes: "500,502,503,504"
             - id: profiles
               uri: lb://epitomejob-backend
               predicates:
@@ -118,11 +114,7 @@ spring:
                   args:
                     name: backend
                     fallbackUri: forward:/fallback/backend
-                    statusCodes:
-                      - 500
-                      - 502
-                      - 503
-                      - 504
+                    statusCodes: "500,502,503,504"
             - id: resumes
               uri: lb://epitomejob-backend
               predicates:
@@ -146,11 +138,7 @@ spring:
                   args:
                     name: backend
                     fallbackUri: forward:/fallback/backend
-                    statusCodes:
-                      - 500
-                      - 502
-                      - 503
-                      - 504
+                    statusCodes: "500,502,503,504"
             - id: jobs
               uri: lb://epitomejob-backend
               predicates:
@@ -174,11 +162,7 @@ spring:
                   args:
                     name: backend
                     fallbackUri: forward:/fallback/backend
-                    statusCodes:
-                      - 500
-                      - 502
-                      - 503
-                      - 504
+                    statusCodes: "500,502,503,504"
             - id: matches
               uri: lb://epitomejob-backend
               predicates:
@@ -202,11 +186,7 @@ spring:
                   args:
                     name: backend
                     fallbackUri: forward:/fallback/backend
-                    statusCodes:
-                      - 500
-                      - 502
-                      - 503
-                      - 504
+                    statusCodes: "500,502,503,504"
             - id: tracker
               uri: lb://epitomejob-backend
               predicates:
@@ -230,11 +210,7 @@ spring:
                   args:
                     name: backend
                     fallbackUri: forward:/fallback/backend
-                    statusCodes:
-                      - 500
-                      - 502
-                      - 503
-                      - 504
+                    statusCodes: "500,502,503,504"
             - id: interviews
               uri: lb://epitomejob-backend
               predicates:
@@ -258,11 +234,7 @@ spring:
                   args:
                     name: backend
                     fallbackUri: forward:/fallback/backend
-                    statusCodes:
-                      - 500
-                      - 502
-                      - 503
-                      - 504
+                    statusCodes: "500,502,503,504"
             - id: coach
               uri: lb://epitomejob-backend
               predicates:
@@ -294,11 +266,7 @@ spring:
                   args:
                     name: coach
                     fallbackUri: forward:/fallback/backend
-                    statusCodes:
-                      - 500
-                      - 502
-                      - 503
-                      - 504
+                    statusCodes: "500,502,503,504"
             - id: approvals
               uri: lb://epitomejob-backend
               predicates:
@@ -322,11 +290,7 @@ spring:
                   args:
                     name: backend
                     fallbackUri: forward:/fallback/backend
-                    statusCodes:
-                      - 500
-                      - 502
-                      - 503
-                      - 504
+                    statusCodes: "500,502,503,504"
             - id: notifications
               uri: lb://epitomejob-backend
               predicates:
@@ -350,11 +314,7 @@ spring:
                   args:
                     name: backend
                     fallbackUri: forward:/fallback/backend
-                    statusCodes:
-                      - 500
-                      - 502
-                      - 503
-                      - 504
+                    statusCodes: "500,502,503,504"
             - id: billing
               uri: lb://epitomejob-backend
               predicates:
@@ -378,11 +338,7 @@ spring:
                   args:
                     name: backend
                     fallbackUri: forward:/fallback/backend
-                    statusCodes:
-                      - 500
-                      - 502
-                      - 503
-                      - 504
+                    statusCodes: "500,502,503,504"
             - id: plans
               uri: lb://epitomejob-backend
               predicates:
@@ -406,11 +362,7 @@ spring:
                   args:
                     name: backend
                     fallbackUri: forward:/fallback/backend
-                    statusCodes:
-                      - 500
-                      - 502
-                      - 503
-                      - 504
+                    statusCodes: "500,502,503,504"
             - id: mcp
               uri: http://mcp-server:8001
               predicates:
@@ -434,11 +386,7 @@ spring:
                   args:
                     name: mcp-service
                     fallbackUri: forward:/fallback/mcp
-                    statusCodes:
-                      - 500
-                      - 502
-                      - 503
-                      - 504
+                    statusCodes: "500,502,503,504"
             - id: resume-builder
               uri: lb://resume-builder-service
               predicates:
@@ -462,11 +410,7 @@ spring:
                   args:
                     name: resume-builder
                     fallbackUri: forward:/fallback/resume-builder
-                    statusCodes:
-                      - 500
-                      - 502
-                      - 503
-                      - 504
+                    statusCodes: "500,502,503,504"
   data:
     redis:
       host: ${REDIS_HOST:localhost}
