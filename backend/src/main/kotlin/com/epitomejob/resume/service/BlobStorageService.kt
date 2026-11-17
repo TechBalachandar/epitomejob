@@ -38,7 +38,7 @@ class BlobStorageService internal constructor(
       minio.makeBucket(MakeBucketArgs.builder().bucket(bucket).build())
     }
     minio.putObject(
-      PutObjectArgs.builder().bucket(bucket).object(path)
+      PutObjectArgs.builder().bucket(bucket).`object`(path)
         .stream(data, size, -1).contentType(contentType).build()
     )
   }

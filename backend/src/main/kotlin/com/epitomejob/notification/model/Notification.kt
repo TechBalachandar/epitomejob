@@ -36,6 +36,7 @@ class Notification(
 ) {
 
   constructor(userId: UUID, type: String, title: String, body: String, link: String) : this(
+    id = UUID.randomUUID(),
     userId = userId,
     type = type,
     title = title,

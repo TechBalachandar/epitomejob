@@ -39,6 +39,7 @@ class Entitlement(
 ) {
 
   constructor(userId: UUID, planCode: String, status: String, expiresAt: Instant?) : this(
+    id = UUID.randomUUID(),
     userId = userId,
     planCode = planCode,
     status = status,

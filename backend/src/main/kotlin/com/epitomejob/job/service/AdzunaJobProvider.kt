@@ -135,10 +135,10 @@ class AdzunaJobProvider : JobProvider {
       .append("&app_key=").append(encode(appKey))
       .append("&results_per_page=").append(size)
     if (!query.isNullOrBlank()) {
-      url.append("&what=").append(encode(query.strip()))
+      url.append("&what=").append(encode(query.trim()))
     }
     if (!location.isNullOrBlank()) {
-      url.append("&where=").append(encode(location.strip()))
+      url.append("&where=").append(encode(location.trim()))
     }
     return url.toString()
   }
@@ -159,7 +159,7 @@ class AdzunaJobProvider : JobProvider {
     }
     var filtered: List<Job> = jobs
     if (!workType.isNullOrBlank()) {
-      filtered = jobs.filter { it.workType.equals(workType.strip(), ignoreCase = true) }
+      filtered = jobs.filter { it.workType.equals(workType.trim(), ignoreCase = true) }
     }
     return PageImpl(filtered, pageable, total)
   }
@@ -200,7 +200,7 @@ class AdzunaJobProvider : JobProvider {
     if (raw.isBlank()) {
       raw = item.path("contract_time").asText("")
     }
-    return when (raw.strip().lowercase()) {
+    return when (raw.trim().lowercase()) {
       "part_time" -> "Part-time"
       "contract" -> "Contract"
       "permanent" -> "Permanent"
@@ -218,7 +218,7 @@ class AdzunaJobProvider : JobProvider {
       return Instant.now()
     }
     return try {
-      Instant.parse(created.strip())
+      Instant.parse(created.trim())
     } catch (e: Exception) {
       Instant.now()
     }

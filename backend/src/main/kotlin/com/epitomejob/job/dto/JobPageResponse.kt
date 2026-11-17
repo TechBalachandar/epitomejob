@@ -1,7 +1,6 @@
 package com.epitomejob.job.dto
 
 import org.springframework.data.domain.Page
-import java.util.List
 
 /** Paged jobs, with the contract §2 field names (page, not Spring's number). */
 data class JobPageResponse(

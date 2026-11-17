@@ -36,6 +36,7 @@ class TrackerEntry(
 ) {
 
   constructor(userId: UUID, jobId: UUID, resumeId: UUID?) : this(
+    id = UUID.randomUUID(),
     userId = userId,
     jobId = jobId,
     resumeId = resumeId

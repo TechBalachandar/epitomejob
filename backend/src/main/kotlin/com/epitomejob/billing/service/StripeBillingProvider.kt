@@ -50,7 +50,7 @@ class StripeBillingProvider(
       .addLineItem(SessionCreateParams.LineItem.builder()
         .setQuantity(1L)
         .setPriceData(SessionCreateParams.LineItem.PriceData.builder()
-          .setCurrency(plan.currency.toLowerCase(Locale.ROOT))
+          .setCurrency(plan.currency.lowercase(Locale.ROOT))
           .setUnitAmount(plan.priceCents.toLong())
           .setProductData(SessionCreateParams.LineItem.PriceData.ProductData.builder()
             .setName(plan.name)

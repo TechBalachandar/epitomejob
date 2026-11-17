@@ -100,10 +100,10 @@ class Job(
         .filter { it.isNotEmpty() }
     }
     set(value) {
-      skillsCsv = value?.joinToString(AppConstants.Job.SKILLS_SEPARATOR) ?: ""
+      skillsCsv = value.joinToString(AppConstants.Job.SKILLS_SEPARATOR)
     }
 
   init {
-    this.skills = skills
+    this.skills = skills ?: emptyList()
   }
 }

@@ -118,17 +118,19 @@ class MatchingService(
     var salaryPoints = 0
     val profileMin = profile?.salaryMin
     val profileMax = profile?.salaryMax
+    val jobMin = job.salaryMin
+    val jobMax = job.salaryMax
     if (profileMin == null) {
       salaryPoints = AppConstants.Matching.SALARY_PARTIAL
       reasons.add(MatchReasonDto(AppConstants.Matching.SALARY_NOT_SET_REASON, salaryPoints))
-    } else if (job.salaryMin != null && job.salaryMin >= profileMin) {
+    } else if (jobMin != null && jobMin >= profileMin) {
       salaryPoints = AppConstants.Matching.SALARY_MAX
       reasons.add(reason(AppConstants.Matching.SALARY_MEETS_REASON, salaryPoints))
     } else if (rangesOverlap(job, profileMin, profileMax)) {
       salaryPoints = AppConstants.Matching.SALARY_PARTIAL
       reasons.add(reason(AppConstants.Matching.SALARY_OVERLAP_REASON, salaryPoints))
     } else {
-      if (job.salaryMax != null && job.salaryMax < profileMin) {
+      if (jobMax != null && jobMax < profileMin) {
         gaps.add("Salary below your minimum")
       }
     }
@@ -207,10 +209,12 @@ class MatchingService(
   }
 
   private fun rangesOverlap(job: Job, profileMin: Int, profileMax: Int?): Boolean {
-    if (job.salaryMax == null || job.salaryMax < profileMin) {
+    val jobMax = job.salaryMax
+    val jobMin = job.salaryMin
+    if (jobMax == null || jobMax < profileMin) {
       return false
     }
-    return profileMax == null || job.salaryMin == null || job.salaryMin <= profileMax
+    return profileMax == null || jobMin == null || jobMin <= profileMax
   }
 
   private fun reason(label: String, points: Int): MatchReasonDto {

@@ -72,7 +72,7 @@ class Profile(
    * The primary constructor keeps every field defaulted so the kotlin-jpa
    * plugin can generate the no-arg constructor Hibernate needs.
    */
-  constructor(userId: UUID) : this(userId = userId)
+  constructor(userId: UUID) : this(userId = userId, id = UUID.randomUUID())
 
   fun touch() {
     updatedAt = Instant.now()

@@ -45,6 +45,7 @@ class CheckoutSession(
     providerSessionId: String?,
     status: String
   ) : this(
+    id = UUID.randomUUID(),
     userId = userId,
     planCode = planCode,
     provider = provider,

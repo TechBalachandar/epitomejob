@@ -99,7 +99,7 @@ class JwtAuthFilterTest {
     assertFalse(run.chainInvoked.get(), "request must not reach the downstream")
     assertEquals(HttpStatus.UNAUTHORIZED, run.exchange.response.statusCode)
     assertTrue(
-      run.exchange.response.headers.contentType.toString().contains("application/json")
+      run.exchange.response.headers.contentType?.toString()?.contains("application/json") == true
     )
   }
 

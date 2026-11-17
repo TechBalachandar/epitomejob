@@ -2,7 +2,6 @@ package com.epitomejob.job.dto
 
 import com.epitomejob.job.model.Job
 import java.time.Instant
-import java.util.List
 import java.util.UUID
 
 /** Job shape, exact field names per the W2 contract §1. */
