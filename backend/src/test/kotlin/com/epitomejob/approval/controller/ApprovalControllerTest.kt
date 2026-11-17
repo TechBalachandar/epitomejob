@@ -7,8 +7,9 @@ import com.epitomejob.identity.service.JwtService
 import io.jsonwebtoken.Claims
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import org.mockito.ArgumentMatchers.anyString
-import org.mockito.Mockito
+import org.mockito.kotlin.any
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
@@ -42,10 +43,10 @@ class ApprovalControllerTest {
   private lateinit var jwt: JwtService
 
   private fun authenticate() {
-    val claims = Mockito.mock(Claims::class.java)
-    Mockito.`when`(claims.subject).thenReturn(USER_ID.toString())
-    Mockito.`when`(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
-    Mockito.`when`(jwt.parse("test-token")).thenReturn(claims)
+    val claims = mock<Claims>()
+    whenever(claims.subject).thenReturn(USER_ID.toString())
+    whenever(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
+    whenever(jwt.parse("test-token")).thenReturn(claims)
   }
 
   private fun approval(status: String): Approval {
@@ -60,7 +61,7 @@ class ApprovalControllerTest {
   @Test
   fun proposeReturns201Pending() {
     authenticate()
-    Mockito.`when`(service.propose(anyString(), anyString())).thenReturn(approval("PENDING"))
+    whenever(service.propose(any(), any())).thenReturn(approval("PENDING"))
 
     mockMvc.perform(
       post("/approvals")
@@ -89,7 +90,7 @@ class ApprovalControllerTest {
   @Test
   fun approveReturnsApproved() {
     authenticate()
-    Mockito.`when`(service.decide(APPROVAL_ID, true)).thenReturn(approval("APPROVED"))
+    whenever(service.decide(APPROVAL_ID, true)).thenReturn(approval("APPROVED"))
 
     mockMvc.perform(
       post("/approvals/$APPROVAL_ID/approve")
@@ -102,7 +103,7 @@ class ApprovalControllerTest {
   @Test
   fun rejectReturnsRejected() {
     authenticate()
-    Mockito.`when`(service.decide(APPROVAL_ID, false)).thenReturn(approval("REJECTED"))
+    whenever(service.decide(APPROVAL_ID, false)).thenReturn(approval("REJECTED"))
 
     mockMvc.perform(
       post("/approvals/$APPROVAL_ID/reject")
@@ -115,7 +116,7 @@ class ApprovalControllerTest {
   @Test
   fun pendingReturnsList() {
     authenticate()
-    Mockito.`when`(service.pendingMine()).thenReturn(listOf(approval("PENDING")))
+    whenever(service.pendingMine()).thenReturn(listOf(approval("PENDING")))
 
     mockMvc.perform(
       get("/approvals/pending")
@@ -128,7 +129,7 @@ class ApprovalControllerTest {
   @Test
   fun streamSendsPendingListAndCompletes() {
     authenticate()
-    Mockito.`when`(service.pendingMine()).thenReturn(listOf(approval("PENDING")))
+    whenever(service.pendingMine()).thenReturn(listOf(approval("PENDING")))
 
     val result = mockMvc.perform(
       get("/approvals/stream")

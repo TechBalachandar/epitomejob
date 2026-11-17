@@ -8,9 +8,10 @@ import com.epitomejob.interview.dto.SessionDto
 import com.epitomejob.interview.service.InterviewService
 import io.jsonwebtoken.Claims
 import org.junit.jupiter.api.Test
-import org.mockito.ArgumentMatchers.anyString
-import org.mockito.ArgumentMatchers.eq
-import org.mockito.Mockito
+import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
@@ -47,10 +48,10 @@ class InterviewControllerTest {
   private lateinit var jwt: JwtService
 
   private fun authenticate() {
-    val claims = Mockito.mock(Claims::class.java)
-    Mockito.`when`(claims.subject).thenReturn(USER_ID.toString())
-    Mockito.`when`(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
-    Mockito.`when`(jwt.parse("test-token")).thenReturn(claims)
+    val claims = mock<Claims>()
+    whenever(claims.subject).thenReturn(USER_ID.toString())
+    whenever(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
+    whenever(jwt.parse("test-token")).thenReturn(claims)
   }
 
   private fun sessionDto(): SessionDto {
@@ -63,7 +64,7 @@ class InterviewControllerTest {
   @Test
   fun questionsReturnsRoleQuestions() {
     authenticate()
-    Mockito.`when`(service.questionsForJob(JOB_ID)).thenReturn(
+    whenever(service.questionsForJob(JOB_ID)).thenReturn(
       listOf(
         QuestionDto(QUESTION_ID, "Explain REST APIs.", "Technical", "Backend")
       )
@@ -91,7 +92,7 @@ class InterviewControllerTest {
   @Test
   fun createSessionReturns201() {
     authenticate()
-    Mockito.`when`(service.createSession(JOB_ID)).thenReturn(sessionDto())
+    whenever(service.createSession(JOB_ID)).thenReturn(sessionDto())
 
     mockMvc.perform(
       post("/interviews/sessions")
@@ -111,7 +112,7 @@ class InterviewControllerTest {
       "My answer.", AnswerDto.AnswerScores(7, 8, 6, 9), 75,
       listOf("Strongly relevant to the question.")
     )
-    Mockito.`when`(service.submitAnswer(eq(SESSION_ID), eq(QUESTION_ID), anyString()))
+    whenever(service.submitAnswer(eq(SESSION_ID), eq(QUESTION_ID), any()))
       .thenReturn(answer)
 
     mockMvc.perform(
@@ -141,7 +142,7 @@ class InterviewControllerTest {
   @Test
   fun getSessionReturnsSession() {
     authenticate()
-    Mockito.`when`(service.getSession(SESSION_ID)).thenReturn(sessionDto())
+    whenever(service.getSession(SESSION_ID)).thenReturn(sessionDto())
 
     mockMvc.perform(
       get("/interviews/sessions/$SESSION_ID")
@@ -154,7 +155,7 @@ class InterviewControllerTest {
   @Test
   fun getMissingSessionIs404() {
     authenticate()
-    Mockito.`when`(service.getSession(SESSION_ID))
+    whenever(service.getSession(SESSION_ID))
       .thenThrow(ResponseStatusException(HttpStatus.NOT_FOUND, "Interview session not found"))
 
     mockMvc.perform(
@@ -167,7 +168,7 @@ class InterviewControllerTest {
   @Test
   fun listMineReturnsSessions() {
     authenticate()
-    Mockito.`when`(service.listMine()).thenReturn(listOf(sessionDto()))
+    whenever(service.listMine()).thenReturn(listOf(sessionDto()))
 
     mockMvc.perform(
       get("/interviews/sessions/me")

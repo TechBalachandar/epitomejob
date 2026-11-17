@@ -6,10 +6,10 @@ import com.epitomejob.tracker.dto.TrackerDto
 import com.epitomejob.tracker.service.TrackerService
 import io.jsonwebtoken.Claims
 import org.junit.jupiter.api.Test
-import org.mockito.ArgumentMatchers.any
-import org.mockito.ArgumentMatchers.eq
-import org.mockito.Mockito
-import org.mockito.Mockito.mock
+import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
@@ -47,10 +47,10 @@ class TrackerControllerTest {
   private lateinit var jwt: JwtService
 
   private fun authenticate() {
-    val claims = mock(Claims::class.java)
-    Mockito.`when`(claims.subject).thenReturn(USER_ID.toString())
-    Mockito.`when`(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
-    Mockito.`when`(jwt.parse("test-token")).thenReturn(claims)
+    val claims = mock<Claims>()
+    whenever(claims.subject).thenReturn(USER_ID.toString())
+    whenever(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
+    whenever(jwt.parse("test-token")).thenReturn(claims)
   }
 
   private fun dto(): TrackerDto {
@@ -61,7 +61,7 @@ class TrackerControllerTest {
   @Test
   fun createReturns201() {
     authenticate()
-    Mockito.`when`(service.create(eq(JOB_ID), any())).thenReturn(dto())
+    whenever(service.create(eq(JOB_ID), any())).thenReturn(dto())
 
     mockMvc.perform(post("/tracker")
         .header("Authorization", "Bearer test-token")
@@ -74,7 +74,7 @@ class TrackerControllerTest {
   @Test
   fun createDuplicateIs409() {
     authenticate()
-    Mockito.`when`(service.create(eq(JOB_ID), any()))
+    whenever(service.create(eq(JOB_ID), any()))
       .thenThrow(ResponseStatusException(HttpStatus.CONFLICT, "Job already saved in tracker"))
 
     mockMvc.perform(post("/tracker")
@@ -98,7 +98,7 @@ class TrackerControllerTest {
   @Test
   fun listMineReturnsEntries() {
     authenticate()
-    Mockito.`when`(service.listMine()).thenReturn(listOf(dto()))
+    whenever(service.listMine()).thenReturn(listOf(dto()))
 
     mockMvc.perform(get("/tracker/me").header("Authorization", "Bearer test-token"))
       .andExpect(status().isOk)
@@ -111,7 +111,7 @@ class TrackerControllerTest {
     val applied = TrackerDto(ENTRY_ID, JOB_ID,
       "Senior Software Engineer, Backend (Java)", "Northwind Health Systems", null,
       "APPLIED", "Applied via portal", Instant.now(), Instant.now())
-    Mockito.`when`(service.update(eq(ENTRY_ID), eq("APPLIED"), eq("Applied via portal")))
+    whenever(service.update(eq(ENTRY_ID), eq("APPLIED"), eq("Applied via portal")))
       .thenReturn(applied)
 
     mockMvc.perform(put("/tracker/$ENTRY_ID")

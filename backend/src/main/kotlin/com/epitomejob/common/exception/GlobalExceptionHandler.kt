@@ -4,6 +4,7 @@ import com.epitomejob.common.constants.AppConstants
 import org.slf4j.MDC
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
@@ -28,6 +29,21 @@ class GlobalExceptionHandler {
       .body(
         ApiError(
           AppConstants.Errors.VALIDATION_FAILED_CODE, message,
+          MDC.get(AppConstants.Http.TRACE_ID_MDC_KEY)
+        )
+      )
+  }
+
+  @ExceptionHandler(HttpMessageNotReadableException::class)
+  fun handle(ex: HttpMessageNotReadableException): ResponseEntity<ApiError> {
+    // Malformed JSON or a missing required field (e.g. TrackerEntry.jobId):
+    // Jackson throws before Bean Validation runs, so map it to 400 here
+    // instead of letting the catch-all below turn it into a 500.
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+      .body(
+        ApiError(
+          AppConstants.Errors.VALIDATION_FAILED_CODE,
+          AppConstants.Errors.VALIDATION_FAILED_CODE,
           MDC.get(AppConstants.Http.TRACE_ID_MDC_KEY)
         )
       )

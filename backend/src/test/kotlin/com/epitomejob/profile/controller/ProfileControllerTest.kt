@@ -9,11 +9,11 @@ import com.epitomejob.profile.service.ProfileService
 import io.jsonwebtoken.Claims
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
-import org.mockito.ArgumentCaptor
-import org.mockito.ArgumentMatchers.any
-import org.mockito.Mockito
-import org.mockito.Mockito.mock
-import org.mockito.Mockito.verify
+import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
@@ -48,10 +48,10 @@ class ProfileControllerTest {
   private lateinit var jwt: JwtService
 
   private fun authenticate() {
-    val claims = mock(Claims::class.java)
-    Mockito.`when`(claims.subject).thenReturn(USER_ID.toString())
-    Mockito.`when`(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
-    Mockito.`when`(jwt.parse("test-token")).thenReturn(claims)
+    val claims = mock<Claims>()
+    whenever(claims.subject).thenReturn(USER_ID.toString())
+    whenever(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
+    whenever(jwt.parse("test-token")).thenReturn(claims)
   }
 
   private fun response(): ProfileResponse {
@@ -66,7 +66,7 @@ class ProfileControllerTest {
   @Test
   fun getMeReturnsProfile() {
     authenticate()
-    Mockito.`when`(service.getMe()).thenReturn(response())
+    whenever(service.getMe()).thenReturn(response())
 
     mockMvc.perform(get("/profiles/me").header("Authorization", "Bearer test-token"))
       .andExpect(status().isOk())
@@ -86,7 +86,7 @@ class ProfileControllerTest {
   @Test
   fun putMeReturnsUpdatedProfile() {
     authenticate()
-    Mockito.`when`(service.upsertMe(any())).thenReturn(response())
+    whenever(service.upsertMe(any())).thenReturn(response())
 
     mockMvc.perform(
       put("/profiles/me")
@@ -101,7 +101,7 @@ class ProfileControllerTest {
   @Test
   fun putMeRoundTripsNewFields() {
     authenticate()
-    Mockito.`when`(service.upsertMe(any())).thenAnswer { inv ->
+    whenever(service.upsertMe(any())).thenAnswer { inv ->
       val req: ProfileUpdateRequest = inv.getArgument(0)
       ProfileResponse(
         UUID.randomUUID(), USER_ID, "Java Developer", null,
@@ -126,19 +126,18 @@ class ProfileControllerTest {
       .andExpect(jsonPath("$.currency").value("EUR"))
       .andExpect(jsonPath("$.visibility").value("PUBLIC"))
 
-    val captor: ArgumentCaptor<ProfileUpdateRequest> =
-      ArgumentCaptor.forClass(ProfileUpdateRequest::class.java)
+    val captor = argumentCaptor<ProfileUpdateRequest>()
     verify(service).upsertMe(captor.capture())
-    assertEquals(listOf("Java", "Spring Boot"), captor.value.skills)
-    assertEquals(LocalDate.of(2026, 10, 15), captor.value.h1bClockStartDate)
-    assertEquals("EUR", captor.value.currency)
-    assertEquals("PUBLIC", captor.value.visibility)
+    assertEquals(listOf("Java", "Spring Boot"), captor.firstValue.skills)
+    assertEquals(LocalDate.of(2026, 10, 15), captor.firstValue.h1bClockStartDate)
+    assertEquals("EUR", captor.firstValue.currency)
+    assertEquals("PUBLIC", captor.firstValue.visibility)
   }
 
   @Test
   fun putMeWithEmptySkillsListClears() {
     authenticate()
-    Mockito.`when`(service.upsertMe(any())).thenReturn(response())
+    whenever(service.upsertMe(any())).thenReturn(response())
 
     mockMvc.perform(
       put("/profiles/me")
@@ -148,16 +147,15 @@ class ProfileControllerTest {
     )
       .andExpect(status().isOk())
 
-    val captor: ArgumentCaptor<ProfileUpdateRequest> =
-      ArgumentCaptor.forClass(ProfileUpdateRequest::class.java)
+    val captor = argumentCaptor<ProfileUpdateRequest>()
     verify(service).upsertMe(captor.capture())
-    assertEquals(emptyList<String>(), captor.value.skills)
+    assertEquals(emptyList<String>(), captor.firstValue.skills)
   }
 
   @Test
   fun putMeWithBadVisibilityReturns400() {
     authenticate()
-    Mockito.`when`(service.upsertMe(any())).thenThrow(
+    whenever(service.upsertMe(any())).thenThrow(
       ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid visibility")
     )
 
@@ -217,7 +215,7 @@ class ProfileControllerTest {
   @Test
   fun putMeRoundTripsLinkedinUrlAndWorkAuthorization() {
     authenticate()
-    Mockito.`when`(service.upsertMe(any())).thenAnswer { inv ->
+    whenever(service.upsertMe(any())).thenAnswer { inv ->
       val req: ProfileUpdateRequest = inv.getArgument(0)
       ProfileResponse(
         UUID.randomUUID(), USER_ID, "Java Developer", null,
@@ -239,20 +237,19 @@ class ProfileControllerTest {
       .andExpect(jsonPath("$.linkedinUrl").value("https://www.linkedin.com/in/balachandar-jeldi"))
       .andExpect(jsonPath("$.workAuthorization").value("H1B"))
 
-    val captor: ArgumentCaptor<ProfileUpdateRequest> =
-      ArgumentCaptor.forClass(ProfileUpdateRequest::class.java)
+    val captor = argumentCaptor<ProfileUpdateRequest>()
     verify(service).upsertMe(captor.capture())
     assertEquals(
       "https://www.linkedin.com/in/balachandar-jeldi",
-      captor.value.linkedinUrl
+      captor.firstValue.linkedinUrl
     )
-    assertEquals("H1B", captor.value.workAuthorization)
+    assertEquals("H1B", captor.firstValue.workAuthorization)
   }
 
   @Test
   fun putMeWithBadLinkedinUrlReturns400() {
     authenticate()
-    Mockito.`when`(service.upsertMe(any())).thenThrow(
+    whenever(service.upsertMe(any())).thenThrow(
       ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid LinkedIn URL")
     )
 
@@ -268,7 +265,7 @@ class ProfileControllerTest {
   @Test
   fun putMeWithBadWorkAuthorizationReturns400() {
     authenticate()
-    Mockito.`when`(service.upsertMe(any())).thenThrow(
+    whenever(service.upsertMe(any())).thenThrow(
       ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid work authorization")
     )
 

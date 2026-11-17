@@ -18,14 +18,14 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
-import org.mockito.ArgumentCaptor
-import org.mockito.ArgumentMatchers.any
-import org.mockito.ArgumentMatchers.eq
+import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
+import org.mockito.kotlin.whenever
 import org.mockito.Mock
-import org.mockito.Mockito
-import org.mockito.Mockito.never
-import org.mockito.Mockito.verify
-import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.junit.jupiter.MockitoExtension
 import org.springframework.http.HttpStatus
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
@@ -93,7 +93,7 @@ class BillingServiceTest {
 
   @Test
   fun listPlansReturnsSeedOrderNotAlphabetical() {
-    Mockito.`when`(plans.findByActiveTrue()).thenReturn(listOf(lifetime(), humanReviewed(), sprintPass()))
+    whenever(plans.findByActiveTrue()).thenReturn(listOf(lifetime(), humanReviewed(), sprintPass()))
 
     val result = service(true, "fake").listPlans()
 
@@ -116,7 +116,7 @@ class BillingServiceTest {
   @Test
   fun checkoutUnknownPlanIs404() {
     authenticate()
-    Mockito.`when`(plans.findById("NOPE")).thenReturn(Optional.empty())
+    whenever(plans.findById("NOPE")).thenReturn(Optional.empty())
 
     val ex = assertThrows(ResponseStatusException::class.java) {
       service(true, "fake").checkout("NOPE")
@@ -128,8 +128,8 @@ class BillingServiceTest {
   @Test
   fun checkoutAlreadyEntitledIs409AndNeverCallsProvider() {
     authenticate()
-    Mockito.`when`(plans.findById("SPRINT_PASS")).thenReturn(Optional.of(sprintPass()))
-    Mockito.`when`(entitlements.existsByUserIdAndPlanCodeAndStatus(USER_ID, "SPRINT_PASS", "ACTIVE"))
+    whenever(plans.findById("SPRINT_PASS")).thenReturn(Optional.of(sprintPass()))
+    whenever(entitlements.existsByUserIdAndPlanCodeAndStatus(USER_ID, "SPRINT_PASS", "ACTIVE"))
       .thenReturn(true)
 
     assertThrows(AlreadyEntitledException::class.java) {
@@ -141,11 +141,11 @@ class BillingServiceTest {
   @Test
   fun checkoutHumanReviewedCreatesPendingManualAndNoProviderSession() {
     authenticate()
-    Mockito.`when`(plans.findById("HUMAN_REVIEWED")).thenReturn(Optional.of(humanReviewed()))
-    Mockito.`when`(entitlements.existsByUserIdAndPlanCodeAndStatus(USER_ID, "HUMAN_REVIEWED", "ACTIVE"))
+    whenever(plans.findById("HUMAN_REVIEWED")).thenReturn(Optional.of(humanReviewed()))
+    whenever(entitlements.existsByUserIdAndPlanCodeAndStatus(USER_ID, "HUMAN_REVIEWED", "ACTIVE"))
       .thenReturn(false)
-    Mockito.`when`(entitlements.save(any())).thenAnswer { i -> i.getArgument<Entitlement>(0) }
-    Mockito.`when`(sessions.save(any())).thenAnswer { i -> i.getArgument<CheckoutSession>(0) }
+    whenever(entitlements.save(any())).thenAnswer { i -> i.getArgument<Entitlement>(0) }
+    whenever(sessions.save(any())).thenAnswer { i -> i.getArgument<CheckoutSession>(0) }
 
     val response: CheckoutResponse = service(true, "fake").checkout("HUMAN_REVIEWED")
 
@@ -153,11 +153,11 @@ class BillingServiceTest {
     assertNull(response.checkoutUrl)
     assertNotNull(response.checkoutSessionId)
     verifyNoInteractions(provider)
-    val entitlement = ArgumentCaptor.forClass(Entitlement::class.java)
+    val entitlement = argumentCaptor<Entitlement>()
     verify(entitlements).save(entitlement.capture())
-    assertEquals("PENDING_MANUAL", entitlement.value.status)
-    assertNull(entitlement.value.expiresAt)
-    val session = ArgumentCaptor.forClass(CheckoutSession::class.java)
+    assertEquals("PENDING_MANUAL", entitlement.firstValue.status)
+    assertNull(entitlement.firstValue.expiresAt)
+    val session = argumentCaptor<CheckoutSession>()
     verify(sessions).save(session.capture())
     assertNull(session.value.providerSessionId)
     assertEquals("CREATED", session.value.status)
@@ -166,19 +166,19 @@ class BillingServiceTest {
   @Test
   fun checkoutCreatesSessionRowWithProviderResult() {
     authenticate()
-    Mockito.`when`(plans.findById("SPRINT_PASS")).thenReturn(Optional.of(sprintPass()))
-    Mockito.`when`(entitlements.existsByUserIdAndPlanCodeAndStatus(USER_ID, "SPRINT_PASS", "ACTIVE"))
+    whenever(plans.findById("SPRINT_PASS")).thenReturn(Optional.of(sprintPass()))
+    whenever(entitlements.existsByUserIdAndPlanCodeAndStatus(USER_ID, "SPRINT_PASS", "ACTIVE"))
       .thenReturn(false)
-    Mockito.`when`(provider.createCheckoutSession(eq(USER_ID), any(Plan::class.java)))
+    whenever(provider.createCheckoutSession(eq(USER_ID), any()))
       .thenReturn(CheckoutSessionResult("fake_abc", null))
-    Mockito.`when`(sessions.save(any())).thenAnswer { i -> i.getArgument<CheckoutSession>(0) }
+    whenever(sessions.save(any())).thenAnswer { i -> i.getArgument<CheckoutSession>(0) }
 
     val response: CheckoutResponse = service(true, "fake").checkout("SPRINT_PASS")
 
     assertEquals("CREATED", response.status)
     assertEquals("fake", response.provider)
     assertNull(response.checkoutUrl)
-    val session = ArgumentCaptor.forClass(CheckoutSession::class.java)
+    val session = argumentCaptor<CheckoutSession>()
     verify(sessions).save(session.capture())
     assertEquals("fake_abc", session.value.providerSessionId)
     assertEquals("CREATED", session.value.status)
@@ -196,55 +196,55 @@ class BillingServiceTest {
 
   @Test
   fun webhookCompletedMarksPaidAndActivatesWithExpiry() {
-    Mockito.`when`(provider.handleWebhook("{}", null))
+    whenever(provider.handleWebhook("{}", null))
       .thenReturn(WebhookEvent("CHECKOUT_COMPLETED", "fake_abc"))
     val session = CheckoutSession(USER_ID, "SPRINT_PASS", "fake",
       "fake_abc", "CREATED")
-    Mockito.`when`(sessions.findByProviderSessionId("fake_abc")).thenReturn(Optional.of(session))
-    Mockito.`when`(plans.findById("SPRINT_PASS")).thenReturn(Optional.of(sprintPass()))
-    Mockito.`when`(entitlements.existsByUserIdAndPlanCodeAndStatus(USER_ID, "SPRINT_PASS", "ACTIVE"))
+    whenever(sessions.findByProviderSessionId("fake_abc")).thenReturn(Optional.of(session))
+    whenever(plans.findById("SPRINT_PASS")).thenReturn(Optional.of(sprintPass()))
+    whenever(entitlements.existsByUserIdAndPlanCodeAndStatus(USER_ID, "SPRINT_PASS", "ACTIVE"))
       .thenReturn(false)
-    Mockito.`when`(sessions.save(any())).thenAnswer { i -> i.getArgument<CheckoutSession>(0) }
-    Mockito.`when`(entitlements.save(any())).thenAnswer { i -> i.getArgument<Entitlement>(0) }
+    whenever(sessions.save(any())).thenAnswer { i -> i.getArgument<CheckoutSession>(0) }
+    whenever(entitlements.save(any())).thenAnswer { i -> i.getArgument<Entitlement>(0) }
 
     val response = service(true, "fake").handleWebhook("{}", null)
 
     assertTrue(response.received)
     assertEquals("PAID", session.status)
-    val entitlement = ArgumentCaptor.forClass(Entitlement::class.java)
+    val entitlement = argumentCaptor<Entitlement>()
     verify(entitlements).save(entitlement.capture())
-    assertEquals("ACTIVE", entitlement.value.status)
-    assertNotNull(entitlement.value.expiresAt)
-    assertTrue(entitlement.value.expiresAt!!
+    assertEquals("ACTIVE", entitlement.firstValue.status)
+    assertNotNull(entitlement.firstValue.expiresAt)
+    assertTrue(entitlement.firstValue.expiresAt!!
       .isAfter(Instant.now().plusSeconds(29L * 24 * 3600)))
   }
 
   @Test
   fun webhookLifetimeHasNoExpiry() {
-    Mockito.`when`(provider.handleWebhook("{}", null))
+    whenever(provider.handleWebhook("{}", null))
       .thenReturn(WebhookEvent("CHECKOUT_COMPLETED", "fake_life"))
     val session = CheckoutSession(USER_ID, "LIFETIME", "fake",
       "fake_life", "CREATED")
-    Mockito.`when`(sessions.findByProviderSessionId("fake_life")).thenReturn(Optional.of(session))
-    Mockito.`when`(plans.findById("LIFETIME")).thenReturn(Optional.of(lifetime()))
-    Mockito.`when`(entitlements.existsByUserIdAndPlanCodeAndStatus(USER_ID, "LIFETIME", "ACTIVE"))
+    whenever(sessions.findByProviderSessionId("fake_life")).thenReturn(Optional.of(session))
+    whenever(plans.findById("LIFETIME")).thenReturn(Optional.of(lifetime()))
+    whenever(entitlements.existsByUserIdAndPlanCodeAndStatus(USER_ID, "LIFETIME", "ACTIVE"))
       .thenReturn(false)
-    Mockito.`when`(sessions.save(any())).thenAnswer { i -> i.getArgument<CheckoutSession>(0) }
-    Mockito.`when`(entitlements.save(any())).thenAnswer { i -> i.getArgument<Entitlement>(0) }
+    whenever(sessions.save(any())).thenAnswer { i -> i.getArgument<CheckoutSession>(0) }
+    whenever(entitlements.save(any())).thenAnswer { i -> i.getArgument<Entitlement>(0) }
 
     service(true, "fake").handleWebhook("{}", null)
 
-    val entitlement = ArgumentCaptor.forClass(Entitlement::class.java)
+    val entitlement = argumentCaptor<Entitlement>()
     verify(entitlements).save(entitlement.capture())
-    assertEquals("ACTIVE", entitlement.value.status)
-    assertNull(entitlement.value.expiresAt)
+    assertEquals("ACTIVE", entitlement.firstValue.status)
+    assertNull(entitlement.firstValue.expiresAt)
   }
 
   @Test
   fun webhookUnknownSessionIs400() {
-    Mockito.`when`(provider.handleWebhook("{}", null))
+    whenever(provider.handleWebhook("{}", null))
       .thenReturn(WebhookEvent("CHECKOUT_COMPLETED", "fake_nope"))
-    Mockito.`when`(sessions.findByProviderSessionId("fake_nope")).thenReturn(Optional.empty())
+    whenever(sessions.findByProviderSessionId("fake_nope")).thenReturn(Optional.empty())
 
     val ex = assertThrows(ResponseStatusException::class.java) {
       service(true, "fake").handleWebhook("{}", null)
@@ -254,15 +254,15 @@ class BillingServiceTest {
 
   @Test
   fun webhookReplayIsIdempotent() {
-    Mockito.`when`(provider.handleWebhook("{}", null))
+    whenever(provider.handleWebhook("{}", null))
       .thenReturn(WebhookEvent("CHECKOUT_COMPLETED", "fake_abc"))
     val session = CheckoutSession(USER_ID, "SPRINT_PASS", "fake",
       "fake_abc", "PAID")
-    Mockito.`when`(sessions.findByProviderSessionId("fake_abc")).thenReturn(Optional.of(session))
-    Mockito.`when`(plans.findById("SPRINT_PASS")).thenReturn(Optional.of(sprintPass()))
-    Mockito.`when`(entitlements.existsByUserIdAndPlanCodeAndStatus(USER_ID, "SPRINT_PASS", "ACTIVE"))
+    whenever(sessions.findByProviderSessionId("fake_abc")).thenReturn(Optional.of(session))
+    whenever(plans.findById("SPRINT_PASS")).thenReturn(Optional.of(sprintPass()))
+    whenever(entitlements.existsByUserIdAndPlanCodeAndStatus(USER_ID, "SPRINT_PASS", "ACTIVE"))
       .thenReturn(true)
-    Mockito.`when`(sessions.save(any())).thenAnswer { i -> i.getArgument<CheckoutSession>(0) }
+    whenever(sessions.save(any())).thenAnswer { i -> i.getArgument<CheckoutSession>(0) }
 
     val response = service(true, "fake").handleWebhook("{}", null)
 
@@ -272,7 +272,7 @@ class BillingServiceTest {
 
   @Test
   fun webhookOtherEventTypeIsAcknowledgedWithoutAction() {
-    Mockito.`when`(provider.handleWebhook("{}", null))
+    whenever(provider.handleWebhook("{}", null))
       .thenReturn(WebhookEvent("charge.succeeded", null))
 
     val response = service(true, "fake").handleWebhook("{}", null)
@@ -295,7 +295,7 @@ class BillingServiceTest {
     authenticate()
     val active = Entitlement(USER_ID, "SPRINT_PASS", "ACTIVE",
       Instant.now().plusSeconds(30L * 24 * 3600))
-    Mockito.`when`(entitlements.findFirstByUserIdAndStatusOrderByStartedAtDesc(USER_ID, "ACTIVE"))
+    whenever(entitlements.findFirstByUserIdAndStatusOrderByStartedAtDesc(USER_ID, "ACTIVE"))
       .thenReturn(Optional.of(active))
 
     val response = service(true, "fake").myEntitlement()
@@ -309,9 +309,9 @@ class BillingServiceTest {
   fun myEntitlementFallsBackToPendingManual() {
     authenticate()
     val pending = Entitlement(USER_ID, "HUMAN_REVIEWED", "PENDING_MANUAL", null)
-    Mockito.`when`(entitlements.findFirstByUserIdAndStatusOrderByStartedAtDesc(USER_ID, "ACTIVE"))
+    whenever(entitlements.findFirstByUserIdAndStatusOrderByStartedAtDesc(USER_ID, "ACTIVE"))
       .thenReturn(Optional.empty())
-    Mockito.`when`(entitlements.findFirstByUserIdAndStatusOrderByStartedAtDesc(USER_ID, "PENDING_MANUAL"))
+    whenever(entitlements.findFirstByUserIdAndStatusOrderByStartedAtDesc(USER_ID, "PENDING_MANUAL"))
       .thenReturn(Optional.of(pending))
 
     val response = service(true, "fake").myEntitlement()
@@ -324,9 +324,9 @@ class BillingServiceTest {
   @Test
   fun myEntitlementNoneWhenEmpty() {
     authenticate()
-    Mockito.`when`(entitlements.findFirstByUserIdAndStatusOrderByStartedAtDesc(USER_ID, "ACTIVE"))
+    whenever(entitlements.findFirstByUserIdAndStatusOrderByStartedAtDesc(USER_ID, "ACTIVE"))
       .thenReturn(Optional.empty())
-    Mockito.`when`(entitlements.findFirstByUserIdAndStatusOrderByStartedAtDesc(USER_ID, "PENDING_MANUAL"))
+    whenever(entitlements.findFirstByUserIdAndStatusOrderByStartedAtDesc(USER_ID, "PENDING_MANUAL"))
       .thenReturn(Optional.empty())
 
     val response = service(true, "fake").myEntitlement()

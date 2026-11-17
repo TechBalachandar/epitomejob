@@ -98,6 +98,10 @@
     <dependency><groupId>io.micrometer</groupId><artifactId>micrometer-tracing-bridge-otel</artifactId></dependency>
     <dependency><groupId>org.springdoc</groupId><artifactId>springdoc-openapi-starter-webmvc-ui</artifactId><version>${springdoc.version}</version></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+    <!-- mockito-kotlin: plain Mockito matchers (any()/eq()) return null for
+         object types, which Kotlin's non-null parameters reject with an NPE
+         at stubbing time. mockito-kotlin's matchers return non-null dummies. -->
+    <dependency><groupId>org.mockito.kotlin</groupId><artifactId>mockito-kotlin</artifactId><version>5.4.0</version><scope>test</scope></dependency>
     <dependency><groupId>com.h2database</groupId><artifactId>h2</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>

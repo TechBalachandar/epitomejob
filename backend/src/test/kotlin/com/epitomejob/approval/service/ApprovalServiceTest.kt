@@ -10,14 +10,13 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
-import org.mockito.ArgumentCaptor
-import org.mockito.ArgumentMatchers.any
-import org.mockito.ArgumentMatchers.anyString
-import org.mockito.ArgumentMatchers.eq
+import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import org.mockito.Mock
-import org.mockito.Mockito.times
-import org.mockito.Mockito.verify
-import org.mockito.Mockito
 import org.mockito.junit.jupiter.MockitoExtension
 import org.springframework.http.HttpStatus
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
@@ -65,7 +64,7 @@ class ApprovalServiceTest {
   @Test
   fun proposeCreatesPendingApprovalExpiringIn24Hours() {
     authenticate()
-    Mockito.`when`(approvals.save(any())).thenAnswer { inv -> inv.getArgument<Approval>(0) }
+    whenever(approvals.save(any())).thenAnswer { inv -> inv.getArgument<Approval>(0) }
 
     val created = service().propose("CREATE_APPLICATION", "{\"jobId\":\"job-1\"}")
 
@@ -81,7 +80,7 @@ class ApprovalServiceTest {
   @Test
   fun proposeCreatesApprovalProposedNotification() {
     authenticate()
-    Mockito.`when`(approvals.save(any())).thenAnswer { inv -> inv.getArgument<Approval>(0) }
+    whenever(approvals.save(any())).thenAnswer { inv -> inv.getArgument<Approval>(0) }
 
     service().propose("APPLY_JOB", "{\"jobId\":\"job-1\"}")
 
@@ -96,13 +95,13 @@ class ApprovalServiceTest {
   @Test
   fun proposeUnknownActionUsesActionItselfAsLabel() {
     authenticate()
-    Mockito.`when`(approvals.save(any())).thenAnswer { inv -> inv.getArgument<Approval>(0) }
+    whenever(approvals.save(any())).thenAnswer { inv -> inv.getArgument<Approval>(0) }
 
     service().propose("SOMETHING_ELSE", "{}")
 
     verify(notifications).create(
       eq(USER_ID), eq("APPROVAL_PROPOSED"),
-      eq("Approval proposed: SOMETHING_ELSE"), anyString(), anyString()
+      eq("Approval proposed: SOMETHING_ELSE"), any(), any()
     )
   }
 
@@ -110,8 +109,8 @@ class ApprovalServiceTest {
   fun approveSetsApprovedAndDecidedAt() {
     authenticate()
     val approval = pendingApproval()
-    Mockito.`when`(approvals.findById(APPROVAL_ID)).thenReturn(Optional.of(approval))
-    Mockito.`when`(approvals.save(any())).thenAnswer { inv -> inv.getArgument<Approval>(0) }
+    whenever(approvals.findById(APPROVAL_ID)).thenReturn(Optional.of(approval))
+    whenever(approvals.save(any())).thenAnswer { inv -> inv.getArgument<Approval>(0) }
 
     val decided = service().decide(APPROVAL_ID, true)
 
@@ -123,8 +122,8 @@ class ApprovalServiceTest {
   fun rejectSetsRejected() {
     authenticate()
     val approval = pendingApproval()
-    Mockito.`when`(approvals.findById(APPROVAL_ID)).thenReturn(Optional.of(approval))
-    Mockito.`when`(approvals.save(any())).thenAnswer { inv -> inv.getArgument<Approval>(0) }
+    whenever(approvals.findById(APPROVAL_ID)).thenReturn(Optional.of(approval))
+    whenever(approvals.save(any())).thenAnswer { inv -> inv.getArgument<Approval>(0) }
 
     assertEquals("REJECTED", service().decide(APPROVAL_ID, false).status)
   }
@@ -133,8 +132,8 @@ class ApprovalServiceTest {
   fun approveTwiceExecutesOnce() {
     authenticate()
     val approval = pendingApproval()
-    Mockito.`when`(approvals.findById(APPROVAL_ID)).thenReturn(Optional.of(approval))
-    Mockito.`when`(approvals.save(any())).thenAnswer { inv -> inv.getArgument<Approval>(0) }
+    whenever(approvals.findById(APPROVAL_ID)).thenReturn(Optional.of(approval))
+    whenever(approvals.save(any())).thenAnswer { inv -> inv.getArgument<Approval>(0) }
 
     service().decide(APPROVAL_ID, true)
     val second = service().decide(APPROVAL_ID, true)
@@ -150,7 +149,7 @@ class ApprovalServiceTest {
       UUID.randomUUID(), "CREATE_APPLICATION", "{}",
       "token-hash", Instant.now().plusSeconds(3600L)
     )
-    Mockito.`when`(approvals.findById(APPROVAL_ID)).thenReturn(Optional.of(other))
+    whenever(approvals.findById(APPROVAL_ID)).thenReturn(Optional.of(other))
 
     val ex = assertThrows(ResponseStatusException::class.java) {
       service().decide(APPROVAL_ID, true)
@@ -161,7 +160,7 @@ class ApprovalServiceTest {
   @Test
   fun decidingMissingApprovalIsNotFound() {
     authenticate()
-    Mockito.`when`(approvals.findById(APPROVAL_ID)).thenReturn(Optional.empty())
+    whenever(approvals.findById(APPROVAL_ID)).thenReturn(Optional.empty())
 
     val ex = assertThrows(ResponseStatusException::class.java) {
       service().decide(APPROVAL_ID, true)
@@ -176,7 +175,7 @@ class ApprovalServiceTest {
       USER_ID, "CREATE_APPLICATION", "{}",
       "token-hash", Instant.now().minusSeconds(60L)
     )
-    Mockito.`when`(approvals.findById(APPROVAL_ID)).thenReturn(Optional.of(expired))
+    whenever(approvals.findById(APPROVAL_ID)).thenReturn(Optional.of(expired))
 
     val ex = assertThrows(ResponseStatusException::class.java) {
       service().decide(APPROVAL_ID, true)
@@ -188,11 +187,11 @@ class ApprovalServiceTest {
   fun pendingMineReturnsOnlyPending() {
     authenticate()
     val approval = pendingApproval()
-    Mockito.`when`(approvals.findByUserIdAndStatusOrderByExpiresAtAsc(USER_ID, "PENDING"))
+    whenever(approvals.findByUserIdAndStatusOrderByExpiresAtAsc(USER_ID, "PENDING"))
       .thenReturn(listOf(approval))
 
     assertEquals(listOf(approval), service().pendingMine())
-    val status = ArgumentCaptor.forClass(String::class.java)
+    val status = argumentCaptor<String>()
     verify(approvals).findByUserIdAndStatusOrderByExpiresAtAsc(any(), status.capture())
     assertEquals("PENDING", status.value)
   }

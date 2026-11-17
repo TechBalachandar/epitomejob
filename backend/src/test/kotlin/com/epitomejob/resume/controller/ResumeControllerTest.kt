@@ -7,11 +7,12 @@ import com.epitomejob.resume.model.Resume
 import com.epitomejob.resume.service.ResumeService
 import io.jsonwebtoken.Claims
 import org.junit.jupiter.api.Test
-import org.mockito.ArgumentMatchers.any
-import org.mockito.ArgumentMatchers.eq
-import org.mockito.Mockito
-import org.mockito.Mockito.mock
-import org.mockito.Mockito.verify
+import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
@@ -47,10 +48,10 @@ class ResumeControllerTest {
   private lateinit var jwt: JwtService
 
   private fun authenticate() {
-    val claims = mock(Claims::class.java)
-    Mockito.`when`(claims.subject).thenReturn(USER_ID.toString())
-    Mockito.`when`(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
-    Mockito.`when`(jwt.parse("test-token")).thenReturn(claims)
+    val claims = mock<Claims>()
+    whenever(claims.subject).thenReturn(USER_ID.toString())
+    whenever(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
+    whenever(jwt.parse("test-token")).thenReturn(claims)
   }
 
   private fun resume(): Resume {
@@ -62,7 +63,7 @@ class ResumeControllerTest {
   @Test
   fun uploadReturns201WithMetadataOnly() {
     authenticate()
-    Mockito.`when`(service.upload(any(MultipartFile::class.java), any())).thenReturn(resume())
+    whenever(service.upload(anyOrNull(), anyOrNull())).thenReturn(resume())
     val file = MockMultipartFile("file", "resume.pdf", "application/pdf", "fake-pdf".toByteArray())
 
     mockMvc.perform(
@@ -82,7 +83,7 @@ class ResumeControllerTest {
     authenticate()
     val labelled = resume()
     labelled.label = "Android Developer"
-    Mockito.`when`(service.upload(any(MultipartFile::class.java), eq("Android Developer")))
+    whenever(service.upload(anyOrNull(), eq("Android Developer")))
       .thenReturn(labelled)
     val file = MockMultipartFile("file", "resume.pdf", "application/pdf", "fake-pdf".toByteArray())
 
@@ -93,7 +94,7 @@ class ResumeControllerTest {
       .andExpect(status().isCreated())
       .andExpect(jsonPath("$.label").value("Android Developer"))
 
-    verify(service).upload(any(MultipartFile::class.java), eq("Android Developer"))
+    verify(service).upload(anyOrNull(), eq("Android Developer"))
   }
 
   @Test
@@ -101,7 +102,7 @@ class ResumeControllerTest {
     authenticate()
     val labelled = resume()
     labelled.label = "Android Developer"
-    Mockito.`when`(service.listMine()).thenReturn(listOf(labelled))
+    whenever(service.listMine()).thenReturn(listOf(labelled))
 
     mockMvc.perform(get("/resumes/me").header("Authorization", "Bearer test-token"))
       .andExpect(status().isOk())
@@ -114,7 +115,7 @@ class ResumeControllerTest {
     authenticate()
     val renamed = resume()
     renamed.label = "Java Backend"
-    Mockito.`when`(service.renameLabel(eq(renamed.id), eq("Java Backend"))).thenReturn(renamed)
+    whenever(service.renameLabel(eq(renamed.id), eq("Java Backend"))).thenReturn(renamed)
 
     mockMvc.perform(
       put("/resumes/" + renamed.id)
@@ -130,7 +131,7 @@ class ResumeControllerTest {
   fun renameLabelMissingIs404() {
     authenticate()
     val id = UUID.randomUUID()
-    Mockito.`when`(service.renameLabel(eq(id), any())).thenThrow(
+    whenever(service.renameLabel(eq(id), any())).thenThrow(
       ResponseStatusException(HttpStatus.NOT_FOUND, "Resume not found")
     )
 
@@ -174,7 +175,7 @@ class ResumeControllerTest {
   @Test
   fun listMineReturnsResumes() {
     authenticate()
-    Mockito.`when`(service.listMine()).thenReturn(listOf(resume()))
+    whenever(service.listMine()).thenReturn(listOf(resume()))
 
     mockMvc.perform(get("/resumes/me").header("Authorization", "Bearer test-token"))
       .andExpect(status().isOk())
@@ -193,7 +194,7 @@ class ResumeControllerTest {
     authenticate()
     val resume = resume()
     resume.parsedText = "Java Developer with Spring Boot"
-    Mockito.`when`(service.getParsedText(resume.id)).thenReturn(resume)
+    whenever(service.getParsedText(resume.id)).thenReturn(resume)
 
     mockMvc.perform(get("/resumes/" + resume.id + "/text").header("Authorization", "Bearer test-token"))
       .andExpect(status().isOk())
@@ -204,7 +205,7 @@ class ResumeControllerTest {
   @Test
   fun getTextNotFoundIs404() {
     authenticate()
-    Mockito.`when`(service.getParsedText(any())).thenThrow(
+    whenever(service.getParsedText(any())).thenThrow(
       ResponseStatusException(HttpStatus.NOT_FOUND, "Resume not found")
     )
 
@@ -215,7 +216,7 @@ class ResumeControllerTest {
   @Test
   fun getTextNotReadyIs400WithCode() {
     authenticate()
-    Mockito.`when`(service.getParsedText(any())).thenThrow(ResumeNotReadyException())
+    whenever(service.getParsedText(any())).thenThrow(ResumeNotReadyException())
 
     mockMvc.perform(get("/resumes/" + UUID.randomUUID() + "/text").header("Authorization", "Bearer test-token"))
       .andExpect(status().isBadRequest())

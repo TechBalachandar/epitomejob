@@ -5,8 +5,8 @@ import com.epitomejob.identity.model.User
 import com.epitomejob.identity.service.AuthService
 import com.epitomejob.identity.service.JwtService
 import org.junit.jupiter.api.Test
-import org.mockito.ArgumentMatchers.any
-import org.mockito.Mockito
+import org.mockito.kotlin.any
+import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
@@ -42,8 +42,8 @@ class AuthControllerTest {
 
   @Test
   fun registerReturns201WithTokens() {
-    Mockito.`when`(auth.register(any(), any(), any())).thenReturn(user())
-    Mockito.`when`(auth.login(any(), any())).thenReturn(tokens())
+    whenever(auth.register(any(), any(), any())).thenReturn(user())
+    whenever(auth.login(any(), any())).thenReturn(tokens())
 
     mockMvc.perform(
       post("/auth/register")
@@ -57,7 +57,7 @@ class AuthControllerTest {
 
   @Test
   fun registerDuplicateEmailReturns409() {
-    Mockito.`when`(auth.register(any(), any(), any()))
+    whenever(auth.register(any(), any(), any()))
       .thenThrow(ResponseStatusException(HttpStatus.CONFLICT, "Email already registered"))
 
     mockMvc.perform(
@@ -82,7 +82,7 @@ class AuthControllerTest {
 
   @Test
   fun loginReturns200WithTokens() {
-    Mockito.`when`(auth.login(any(), any())).thenReturn(tokens())
+    whenever(auth.login(any(), any())).thenReturn(tokens())
 
     mockMvc.perform(
       post("/auth/login")
@@ -96,7 +96,7 @@ class AuthControllerTest {
 
   @Test
   fun loginBadCredentialsReturns401() {
-    Mockito.`when`(auth.login(any(), any()))
+    whenever(auth.login(any(), any()))
       .thenThrow(ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"))
 
     mockMvc.perform(
@@ -110,7 +110,7 @@ class AuthControllerTest {
 
   @Test
   fun refreshReturns200WithTokens() {
-    Mockito.`when`(auth.refresh(any())).thenReturn(tokens())
+    whenever(auth.refresh(any())).thenReturn(tokens())
 
     mockMvc.perform(
       post("/auth/refresh")

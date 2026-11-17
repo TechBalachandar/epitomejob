@@ -6,11 +6,12 @@ import com.epitomejob.job.dto.JobDto
 import com.epitomejob.job.service.JobService
 import io.jsonwebtoken.Claims
 import org.junit.jupiter.api.Test
-import org.mockito.ArgumentMatchers.any
-import org.mockito.ArgumentMatchers.eq
-import org.mockito.Mockito
-import org.mockito.Mockito.mock
-import org.mockito.Mockito.verify
+import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
@@ -45,10 +46,10 @@ class JobControllerTest {
   private lateinit var jwt: JwtService
 
   private fun authenticate() {
-    val claims = mock(Claims::class.java)
-    Mockito.`when`(claims.subject).thenReturn(USER_ID.toString())
-    Mockito.`when`(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
-    Mockito.`when`(jwt.parse("test-token")).thenReturn(claims)
+    val claims = mock<Claims>()
+    whenever(claims.subject).thenReturn(USER_ID.toString())
+    whenever(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
+    whenever(jwt.parse("test-token")).thenReturn(claims)
   }
 
   private fun jobDto(): JobDto {
@@ -64,7 +65,7 @@ class JobControllerTest {
   @Test
   fun listReturnsPageShape() {
     authenticate()
-    Mockito.`when`(service.search(eq("backend"), any(), any(), any(), any(), eq(PageRequest.of(0, 20))))
+    whenever(service.search(eq("backend"), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), eq(PageRequest.of(0, 20))))
       .thenReturn(PageImpl(listOf(jobDto()), PageRequest.of(0, 20), 1))
 
     mockMvc.perform(get("/jobs?query=backend").header("Authorization", "Bearer test-token"))
@@ -82,20 +83,20 @@ class JobControllerTest {
   @Test
   fun listWithSourceFilterPassesSourceThrough() {
     authenticate()
-    Mockito.`when`(service.search(any(), any(), any(), any(), eq("linkedin"), any()))
+    whenever(service.search(anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), eq("linkedin"), any()))
       .thenReturn(PageImpl(listOf(jobDto()), PageRequest.of(0, 20), 1))
 
     mockMvc.perform(get("/jobs?source=linkedin").header("Authorization", "Bearer test-token"))
       .andExpect(status().isOk())
       .andExpect(jsonPath("$.totalElements").value(1))
 
-    verify(service).search(any(), any(), any(), any(), eq("linkedin"), any())
+    verify(service).search(anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), eq("linkedin"), any())
   }
 
   @Test
   fun getOneReturnsJob() {
     authenticate()
-    Mockito.`when`(service.getJob(JOB_ID)).thenReturn(jobDto())
+    whenever(service.getJob(JOB_ID)).thenReturn(jobDto())
 
     mockMvc.perform(get("/jobs/" + JOB_ID).header("Authorization", "Bearer test-token"))
       .andExpect(status().isOk())
@@ -107,7 +108,7 @@ class JobControllerTest {
   @Test
   fun getOneMissingIs404() {
     authenticate()
-    Mockito.`when`(service.getJob(JOB_ID))
+    whenever(service.getJob(JOB_ID))
       .thenThrow(ResponseStatusException(HttpStatus.NOT_FOUND, "Job not found"))
 
     mockMvc.perform(get("/jobs/" + JOB_ID).header("Authorization", "Bearer test-token"))

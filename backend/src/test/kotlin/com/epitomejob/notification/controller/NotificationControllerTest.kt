@@ -7,11 +7,11 @@ import com.epitomejob.notification.dto.NotificationPage
 import com.epitomejob.notification.service.NotificationService
 import io.jsonwebtoken.Claims
 import org.junit.jupiter.api.Test
-import org.mockito.ArgumentMatchers.any
-import org.mockito.Mockito
-import org.mockito.Mockito.mock
-import org.mockito.Mockito.never
-import org.mockito.Mockito.verify
+import org.mockito.kotlin.any
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
@@ -44,10 +44,10 @@ class NotificationControllerTest {
   private lateinit var jwt: JwtService
 
   private fun authenticate() {
-    val claims = mock(Claims::class.java)
-    Mockito.`when`(claims.subject).thenReturn(USER_ID.toString())
-    Mockito.`when`(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
-    Mockito.`when`(jwt.parse("test-token")).thenReturn(claims)
+    val claims = mock<Claims>()
+    whenever(claims.subject).thenReturn(USER_ID.toString())
+    whenever(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
+    whenever(jwt.parse("test-token")).thenReturn(claims)
   }
 
   private fun dto(): NotificationDto {
@@ -59,7 +59,7 @@ class NotificationControllerTest {
   @Test
   fun getMeReturns200WithPageShape() {
     authenticate()
-    Mockito.`when`(service.listMine(0, 20)).thenReturn(
+    whenever(service.listMine(0, 20)).thenReturn(
       NotificationPage(listOf(dto()), 0, 20, 1, 1))
 
     mockMvc.perform(get("/notifications/me")
@@ -77,7 +77,7 @@ class NotificationControllerTest {
   @Test
   fun getMeForwardsPageAndSize() {
     authenticate()
-    Mockito.`when`(service.listMine(1, 5)).thenReturn(
+    whenever(service.listMine(1, 5)).thenReturn(
       NotificationPage(listOf(), 1, 5, 0, 0))
 
     mockMvc.perform(get("/notifications/me?page=1&size=5")
@@ -89,7 +89,7 @@ class NotificationControllerTest {
   @Test
   fun getUnreadCountReturnsCount() {
     authenticate()
-    Mockito.`when`(service.unreadCount()).thenReturn(2L)
+    whenever(service.unreadCount()).thenReturn(2L)
 
     mockMvc.perform(get("/notifications/unread-count")
         .header("Authorization", "Bearer test-token"))
@@ -100,7 +100,7 @@ class NotificationControllerTest {
   @Test
   fun markReadReturns200() {
     authenticate()
-    Mockito.`when`(service.markRead(NOTIFICATION_ID)).thenReturn(
+    whenever(service.markRead(NOTIFICATION_ID)).thenReturn(
       NotificationDto(NOTIFICATION_ID.toString(), "TRACKER_CHANGED",
         "Application updated", "Senior Software Engineer, Backend (Java) moved to Applied.",
         "/tracker", true, false, "2026-11-13T10:00:00Z"))
@@ -114,7 +114,7 @@ class NotificationControllerTest {
   @Test
   fun markReadUnknownIdIs404() {
     authenticate()
-    Mockito.`when`(service.markRead(NOTIFICATION_ID)).thenThrow(
+    whenever(service.markRead(NOTIFICATION_ID)).thenThrow(
       ResponseStatusException(HttpStatus.NOT_FOUND, "Notification not found"))
 
     mockMvc.perform(post("/notifications/$NOTIFICATION_ID/read")
@@ -135,7 +135,7 @@ class NotificationControllerTest {
   @Test
   fun readAllReturnsCount() {
     authenticate()
-    Mockito.`when`(service.markAllRead()).thenReturn(2)
+    whenever(service.markAllRead()).thenReturn(2)
 
     mockMvc.perform(post("/notifications/read-all")
         .header("Authorization", "Bearer test-token"))

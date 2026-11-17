@@ -15,11 +15,11 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
-import org.mockito.ArgumentMatchers.any
-import org.mockito.ArgumentMatchers.eq
+import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import org.mockito.Mock
-import org.mockito.Mockito
-import org.mockito.Mockito.verify
 import org.mockito.junit.jupiter.MockitoExtension
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
@@ -87,10 +87,10 @@ class InterviewServiceTest {
   @Test
   fun createSessionCreatesInterviewCreatedNotification() {
     authenticate()
-    Mockito.`when`(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()))
-    Mockito.`when`(questions.findByRoleOrderBySortOrderAsc("Backend"))
+    whenever(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()))
+    whenever(questions.findByRoleOrderBySortOrderAsc("Backend"))
       .thenReturn(listOf(question(1), question(2)))
-    Mockito.`when`(sessions.save(any())).thenAnswer { inv -> inv.getArgument<InterviewSession>(0) }
+    whenever(sessions.save(any())).thenAnswer { inv -> inv.getArgument<InterviewSession>(0) }
 
     val dto = service().createSession(JOB_ID)
 
@@ -177,10 +177,10 @@ class InterviewServiceTest {
   fun submitAnswerRejectsEmptyAnswerAndForeignQuestion() {
     authenticate()
     val session = InterviewSession(USER_ID, JOB_ID)
-    Mockito.`when`(sessions.findById(SESSION_ID)).thenReturn(Optional.of(session))
-    Mockito.`when`(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()))
+    whenever(sessions.findById(SESSION_ID)).thenReturn(Optional.of(session))
+    whenever(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()))
     val roleQuestions = listOf(question(1), question(2))
-    Mockito.`when`(questions.findByRoleOrderBySortOrderAsc("Backend")).thenReturn(roleQuestions)
+    whenever(questions.findByRoleOrderBySortOrderAsc("Backend")).thenReturn(roleQuestions)
 
     val empty = assertThrows(ResponseStatusException::class.java) {
       service().submitAnswer(SESSION_ID, roleQuestions[0].id, "  ")
@@ -197,7 +197,7 @@ class InterviewServiceTest {
   fun submitAnswerForOtherUsersSessionIs404() {
     authenticate()
     val other = InterviewSession(UUID.randomUUID(), JOB_ID)
-    Mockito.`when`(sessions.findById(SESSION_ID)).thenReturn(Optional.of(other))
+    whenever(sessions.findById(SESSION_ID)).thenReturn(Optional.of(other))
 
     val ex = assertThrows(ResponseStatusException::class.java) {
       service().submitAnswer(SESSION_ID, UUID.randomUUID(), "answer")
@@ -209,15 +209,15 @@ class InterviewServiceTest {
   fun answeringAllRoleQuestionsCompletesSession() {
     authenticate()
     val session = InterviewSession(USER_ID, JOB_ID)
-    Mockito.`when`(sessions.findById(SESSION_ID)).thenReturn(Optional.of(session))
+    whenever(sessions.findById(SESSION_ID)).thenReturn(Optional.of(session))
     val j = job()
-    Mockito.`when`(jobs.findById(JOB_ID)).thenReturn(Optional.of(j))
+    whenever(jobs.findById(JOB_ID)).thenReturn(Optional.of(j))
     val roleQuestions = listOf(question(1), question(2))
-    Mockito.`when`(questions.findByRoleOrderBySortOrderAsc("Backend")).thenReturn(roleQuestions)
+    whenever(questions.findByRoleOrderBySortOrderAsc("Backend")).thenReturn(roleQuestions)
     val q2 = roleQuestions[1]
-    Mockito.`when`(answers.findBySessionIdAndQuestionId(SESSION_ID, q2.id))
+    whenever(answers.findBySessionIdAndQuestionId(SESSION_ID, q2.id))
       .thenReturn(Optional.empty())
-    Mockito.`when`(answers.save(any())).thenAnswer { inv -> inv.getArgument<Answer>(0) }
+    whenever(answers.save(any())).thenAnswer { inv -> inv.getArgument<Answer>(0) }
     val first = Answer(
       SESSION_ID, roleQuestions[0].id, "first",
       5, 5, 5, 5, 50, listOf("Good start — add one concrete example and tighten the structure.")
@@ -226,8 +226,8 @@ class InterviewServiceTest {
       SESSION_ID, q2.id, "second",
       5, 5, 5, 5, 50, listOf("Good start — add one concrete example and tighten the structure.")
     )
-    Mockito.`when`(answers.findBySessionId(session.id)).thenReturn(listOf(first, second))
-    Mockito.`when`(sessions.save(any())).thenAnswer { inv -> inv.getArgument<InterviewSession>(0) }
+    whenever(answers.findBySessionId(session.id)).thenReturn(listOf(first, second))
+    whenever(sessions.save(any())).thenAnswer { inv -> inv.getArgument<InterviewSession>(0) }
 
     val dto = service().submitAnswer(
       SESSION_ID, q2.id,
@@ -246,8 +246,8 @@ class InterviewServiceTest {
       "General", "Behavioral", "General question",
       listOf("situation", "action"), 1
     )
-    Mockito.`when`(questions.findByRoleOrderBySortOrderAsc("Backend")).thenReturn(emptyList())
-    Mockito.`when`(questions.findByRoleOrderBySortOrderAsc("General")).thenReturn(listOf(general))
+    whenever(questions.findByRoleOrderBySortOrderAsc("Backend")).thenReturn(emptyList())
+    whenever(questions.findByRoleOrderBySortOrderAsc("General")).thenReturn(listOf(general))
 
     val found = service().roleQuestions("Backend")
     assertEquals(1, found.size)

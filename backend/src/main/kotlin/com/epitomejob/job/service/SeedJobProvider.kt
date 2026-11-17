@@ -7,8 +7,11 @@ import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.Pageable
 import org.springframework.transaction.annotation.Transactional
 
-/** Default provider (W2 contract §8): reads the seeded `job.jobs` table. */
-class SeedJobProvider(private val jobs: JobRepository) : JobProvider {
+/** Default provider (W2 contract §8): reads the seeded `job.jobs` table.
+ * Open so Spring can create the CGLIB proxy for @Transactional: this class
+ * is instantiated by a @Bean method (no stereotype annotation), so the
+ * kotlin-spring all-open plugin does not open it. */
+open class SeedJobProvider(private val jobs: JobRepository) : JobProvider {
 
   @Transactional(readOnly = true)
   override fun search(

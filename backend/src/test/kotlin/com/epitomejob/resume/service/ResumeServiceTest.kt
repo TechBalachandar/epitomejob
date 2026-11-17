@@ -17,13 +17,13 @@ import org.apache.poi.xwpf.usermodel.XWPFRun
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
-import org.mockito.ArgumentMatchers.any
-import org.mockito.ArgumentMatchers.anyLong
-import org.mockito.ArgumentMatchers.argThat
+import org.mockito.kotlin.any
+import org.mockito.kotlin.argThat
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import org.mockito.Mock
-import org.mockito.Mockito
-import org.mockito.Mockito.mock
-import org.mockito.Mockito.verify
 import org.mockito.junit.jupiter.MockitoExtension
 import org.springframework.http.HttpStatus
 import org.springframework.mock.web.MockMultipartFile
@@ -153,20 +153,20 @@ class ResumeServiceTest {
   @Test
   fun uploadValidPdfIsReady() {
     authenticate()
-    Mockito.`when`(resumes.save(argThat { true })).thenAnswer { inv -> inv.getArgument<Resume>(0) }
+    whenever(resumes.save(argThat { true })).thenAnswer { inv -> inv.getArgument<Resume>(0) }
     val file = MockMultipartFile("file", "resume.pdf", "application/pdf", realPdfBytes())
 
     val saved = service().upload(file)
 
     assertEquals("READY", saved.status)
     assertTrue(saved.parsedText?.contains("Balachandar") ?: false)
-    verify(blob).put(any(), any(), anyLong(), any())
+    verify(blob).put(any(), any(), any(), any())
   }
 
   @Test
   fun uploadUnparseablePdfIsFailedButKept() {
     authenticate()
-    Mockito.`when`(resumes.save(argThat { true })).thenAnswer { inv -> inv.getArgument<Resume>(0) }
+    whenever(resumes.save(argThat { true })).thenAnswer { inv -> inv.getArgument<Resume>(0) }
     val file = MockMultipartFile(
       "file", "resume.pdf", "application/pdf",
       "this is not a pdf at all".toByteArray()
@@ -188,7 +188,7 @@ class ResumeServiceTest {
   @Test
   fun uploadValidDocxIsReady() {
     authenticate()
-    Mockito.`when`(resumes.save(argThat { true })).thenAnswer { inv -> inv.getArgument<Resume>(0) }
+    whenever(resumes.save(argThat { true })).thenAnswer { inv -> inv.getArgument<Resume>(0) }
     val file = MockMultipartFile(
       "file", "resume.docx",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -201,13 +201,13 @@ class ResumeServiceTest {
     assertEquals("docx", saved.fileType)
     assertTrue(saved.blobPath.endsWith(".docx"), "blob keeps the .docx extension")
     assertTrue(saved.parsedText?.contains("Ada Lovelace") ?: false)
-    verify(blob).put(any(), any(), anyLong(), any())
+    verify(blob).put(any(), any(), any(), any())
   }
 
   @Test
   fun uploadValidDocIsReady() {
     authenticate()
-    Mockito.`when`(resumes.save(argThat { true })).thenAnswer { inv -> inv.getArgument<Resume>(0) }
+    whenever(resumes.save(argThat { true })).thenAnswer { inv -> inv.getArgument<Resume>(0) }
     val file = MockMultipartFile("file", "resume.doc", "application/msword", emptyDocBytes())
 
     val saved = service().upload(file)
@@ -215,7 +215,7 @@ class ResumeServiceTest {
     assertEquals("READY", saved.status, "a legacy .doc is accepted, not rejected")
     assertEquals("doc", saved.fileType)
     assertTrue(saved.blobPath.endsWith(".doc"), "blob keeps the .doc extension")
-    verify(blob).put(any(), any(), anyLong(), any())
+    verify(blob).put(any(), any(), any(), any())
   }
 
   @Test
@@ -229,9 +229,9 @@ class ResumeServiceTest {
   @Test
   fun uploadOversizeFileIsPayloadTooLarge() {
     authenticate()
-    val file = mock(MultipartFile::class.java)
-    Mockito.`when`(file.isEmpty).thenReturn(false)
-    Mockito.`when`(file.size).thenReturn(11L * 1024 * 1024)
+    val file = mock<MultipartFile>()
+    whenever(file.isEmpty).thenReturn(false)
+    whenever(file.size).thenReturn(11L * 1024 * 1024)
     // No getOriginalFilename() stub: the size check throws before the name is ever read,
     // and Mockito strict stubs fail the test on an unused stub.
     val ex = assertThrows(ResponseStatusException::class.java) { service().upload(file) }
@@ -242,7 +242,7 @@ class ResumeServiceTest {
   fun listMineReturnsNewestFirst() {
     authenticate()
     val resume = Resume(USER_ID, "u1/f.pdf", "resume.pdf", "pdf", 100)
-    Mockito.`when`(resumes.findByUserIdOrderByCreatedAtDesc(USER_ID)).thenReturn(listOf(resume))
+    whenever(resumes.findByUserIdOrderByCreatedAtDesc(USER_ID)).thenReturn(listOf(resume))
 
     assertEquals(listOf(resume), service().listMine())
   }
@@ -256,7 +256,7 @@ class ResumeServiceTest {
   fun listMineScopesQueryToAuthenticatedUser() {
     authenticate()
     val mine = Resume(USER_ID, "u1/f.pdf", "resume.pdf", "pdf", 100)
-    Mockito.`when`(resumes.findByUserIdOrderByCreatedAtDesc(USER_ID)).thenReturn(listOf(mine))
+    whenever(resumes.findByUserIdOrderByCreatedAtDesc(USER_ID)).thenReturn(listOf(mine))
 
     val result = service().listMine()
 
@@ -275,7 +275,7 @@ class ResumeServiceTest {
   @Test
   fun uploadStoresResumeUnderAuthenticatedUserId() {
     authenticate()
-    Mockito.`when`(resumes.save(argThat { true })).thenAnswer { inv -> inv.getArgument<Resume>(0) }
+    whenever(resumes.save(argThat { true })).thenAnswer { inv -> inv.getArgument<Resume>(0) }
     val file = MockMultipartFile("file", "resume.pdf", "application/pdf", realPdfBytes())
 
     val saved = service().upload(file)
@@ -292,7 +292,7 @@ class ResumeServiceTest {
     authenticate()
     val resume = Resume(USER_ID, "u1/f.pdf", "resume.pdf", "pdf", 100)
     resume.parsedText = "Java Developer with Spring Boot"
-    Mockito.`when`(resumes.findById(resume.id)).thenReturn(Optional.of(resume))
+    whenever(resumes.findById(resume.id)).thenReturn(Optional.of(resume))
 
     assertEquals(resume, service().getParsedText(resume.id))
   }
@@ -300,7 +300,7 @@ class ResumeServiceTest {
   @Test
   fun getParsedTextMissingIs404() {
     authenticate()
-    Mockito.`when`(resumes.findById(any())).thenReturn(Optional.empty())
+    whenever(resumes.findById(any())).thenReturn(Optional.empty())
 
     val ex = assertThrows(ResponseStatusException::class.java) {
       service().getParsedText(UUID.randomUUID())
@@ -313,7 +313,7 @@ class ResumeServiceTest {
     authenticate()
     val resume = Resume(UUID.randomUUID(), "u1/f.pdf", "resume.pdf", "pdf", 100)
     resume.parsedText = "someone else's text"
-    Mockito.`when`(resumes.findById(any())).thenReturn(Optional.of(resume))
+    whenever(resumes.findById(any())).thenReturn(Optional.of(resume))
 
     val ex = assertThrows(ResponseStatusException::class.java) {
       service().getParsedText(resume.id)
@@ -325,7 +325,7 @@ class ResumeServiceTest {
   fun getParsedTextNullIsNotReady() {
     authenticate()
     val resume = Resume(USER_ID, "u1/f.pdf", "resume.pdf", "pdf", 100)
-    Mockito.`when`(resumes.findById(any())).thenReturn(Optional.of(resume))
+    whenever(resumes.findById(any())).thenReturn(Optional.of(resume))
 
     assertThrows(ResumeNotReadyException::class.java) { service().getParsedText(resume.id) }
   }
@@ -335,7 +335,7 @@ class ResumeServiceTest {
     authenticate()
     val resume = Resume(USER_ID, "u1/f.pdf", "resume.pdf", "pdf", 100)
     resume.parsedText = "   "
-    Mockito.`when`(resumes.findById(any())).thenReturn(Optional.of(resume))
+    whenever(resumes.findById(any())).thenReturn(Optional.of(resume))
 
     assertThrows(ResumeNotReadyException::class.java) { service().getParsedText(resume.id) }
   }
@@ -343,7 +343,7 @@ class ResumeServiceTest {
   @Test
   fun uploadWithLabelPersistsTrimmedLabel() {
     authenticate()
-    Mockito.`when`(resumes.save(argThat { true })).thenAnswer { inv -> inv.getArgument<Resume>(0) }
+    whenever(resumes.save(argThat { true })).thenAnswer { inv -> inv.getArgument<Resume>(0) }
     val file = MockMultipartFile("file", "resume.pdf", "application/pdf", realPdfBytes())
 
     val saved = service().upload(file, "  Android Developer  ")
@@ -355,7 +355,7 @@ class ResumeServiceTest {
   @Test
   fun uploadWithoutLabelStoresNull() {
     authenticate()
-    Mockito.`when`(resumes.save(argThat { true })).thenAnswer { inv -> inv.getArgument<Resume>(0) }
+    whenever(resumes.save(argThat { true })).thenAnswer { inv -> inv.getArgument<Resume>(0) }
     val file = MockMultipartFile("file", "resume.pdf", "application/pdf", realPdfBytes())
 
     val saved = service().upload(file)
@@ -366,7 +366,7 @@ class ResumeServiceTest {
   @Test
   fun uploadWithEmptyLabelStoresNull() {
     authenticate()
-    Mockito.`when`(resumes.save(argThat { true })).thenAnswer { inv -> inv.getArgument<Resume>(0) }
+    whenever(resumes.save(argThat { true })).thenAnswer { inv -> inv.getArgument<Resume>(0) }
     val file = MockMultipartFile("file", "resume.pdf", "application/pdf", realPdfBytes())
 
     val saved = service().upload(file, "   ")
@@ -404,8 +404,8 @@ class ResumeServiceTest {
     authenticate()
     val resume = Resume(USER_ID, "u1/f.pdf", "resume.pdf", "pdf", 100)
     resume.status = "READY"
-    Mockito.`when`(resumes.findById(resume.id)).thenReturn(Optional.of(resume))
-    Mockito.`when`(resumes.save(argThat { true })).thenAnswer { inv -> inv.getArgument<Resume>(0) }
+    whenever(resumes.findById(resume.id)).thenReturn(Optional.of(resume))
+    whenever(resumes.save(argThat { true })).thenAnswer { inv -> inv.getArgument<Resume>(0) }
 
     val renamed = service().renameLabel(resume.id, "  Java Backend  ")
 
@@ -416,7 +416,7 @@ class ResumeServiceTest {
   @Test
   fun renameLabelMissingIs404() {
     authenticate()
-    Mockito.`when`(resumes.findById(any())).thenReturn(Optional.empty())
+    whenever(resumes.findById(any())).thenReturn(Optional.empty())
 
     val ex = assertThrows(ResponseStatusException::class.java) {
       service().renameLabel(UUID.randomUUID(), "Android Developer")
@@ -428,7 +428,7 @@ class ResumeServiceTest {
   fun renameLabelNotOwnerIs404() {
     authenticate()
     val resume = Resume(UUID.randomUUID(), "u1/f.pdf", "resume.pdf", "pdf", 100)
-    Mockito.`when`(resumes.findById(any())).thenReturn(Optional.of(resume))
+    whenever(resumes.findById(any())).thenReturn(Optional.of(resume))
 
     val ex = assertThrows(ResponseStatusException::class.java) {
       service().renameLabel(resume.id, "Android Developer")

@@ -12,10 +12,10 @@ import com.epitomejob.common.security.SecurityConfig
 import com.epitomejob.identity.service.JwtService
 import io.jsonwebtoken.Claims
 import org.junit.jupiter.api.Test
-import org.mockito.ArgumentMatchers.any
-import org.mockito.ArgumentMatchers.eq
-import org.mockito.Mockito
-import org.mockito.Mockito.mock
+import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
@@ -50,10 +50,10 @@ class BillingControllerTest {
   private lateinit var jwt: JwtService
 
   private fun authenticate() {
-    val claims = mock(Claims::class.java)
-    Mockito.`when`(claims.subject).thenReturn(USER_ID.toString())
-    Mockito.`when`(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
-    Mockito.`when`(jwt.parse("test-token")).thenReturn(claims)
+    val claims = mock<Claims>()
+    whenever(claims.subject).thenReturn(USER_ID.toString())
+    whenever(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
+    whenever(jwt.parse("test-token")).thenReturn(claims)
   }
 
   private fun seedPlans(): List<PlanDto> {
@@ -69,7 +69,7 @@ class BillingControllerTest {
   @Test
   fun statusIs200EvenWithoutOtherMocks() {
     authenticate()
-    Mockito.`when`(service.status()).thenReturn(BillingStatusResponse(true, "fake"))
+    whenever(service.status()).thenReturn(BillingStatusResponse(true, "fake"))
 
     mockMvc.perform(get("/billing/status").header("Authorization", "Bearer test-token"))
       .andExpect(status().isOk)
@@ -86,7 +86,7 @@ class BillingControllerTest {
   @Test
   fun plansReturnsSeedOrder() {
     authenticate()
-    Mockito.`when`(service.listPlans()).thenReturn(seedPlans())
+    whenever(service.listPlans()).thenReturn(seedPlans())
 
     mockMvc.perform(get("/billing/plans").header("Authorization", "Bearer test-token"))
       .andExpect(status().isOk)
@@ -102,7 +102,7 @@ class BillingControllerTest {
   @Test
   fun plansWhenFlagOffIs404() {
     authenticate()
-    Mockito.`when`(service.listPlans())
+    whenever(service.listPlans())
       .thenThrow(ResponseStatusException(HttpStatus.NOT_FOUND, "Billing is not enabled"))
 
     mockMvc.perform(get("/billing/plans").header("Authorization", "Bearer test-token"))
@@ -118,7 +118,7 @@ class BillingControllerTest {
   @Test
   fun checkoutReturns201() {
     authenticate()
-    Mockito.`when`(service.checkout(eq("SPRINT_PASS"))).thenReturn(
+    whenever(service.checkout(eq("SPRINT_PASS"))).thenReturn(
       CheckoutResponse(SESSION_ID, "fake", null, "CREATED"))
 
     mockMvc.perform(post("/billing/checkout").header("Authorization", "Bearer test-token")
@@ -134,7 +134,7 @@ class BillingControllerTest {
   @Test
   fun checkoutHumanReviewedReturnsPendingManual() {
     authenticate()
-    Mockito.`when`(service.checkout(eq("HUMAN_REVIEWED"))).thenReturn(
+    whenever(service.checkout(eq("HUMAN_REVIEWED"))).thenReturn(
       CheckoutResponse(SESSION_ID, "fake", null, "PENDING_MANUAL"))
 
     mockMvc.perform(post("/billing/checkout").header("Authorization", "Bearer test-token")
@@ -148,7 +148,7 @@ class BillingControllerTest {
   @Test
   fun checkoutAlreadyEntitledIs409WithCode() {
     authenticate()
-    Mockito.`when`(service.checkout(any())).thenThrow(AlreadyEntitledException())
+    whenever(service.checkout(any())).thenThrow(AlreadyEntitledException())
 
     mockMvc.perform(post("/billing/checkout").header("Authorization", "Bearer test-token")
         .contentType(MediaType.APPLICATION_JSON)
@@ -160,7 +160,7 @@ class BillingControllerTest {
   @Test
   fun checkoutStripeNotConfiguredIs503WithCodeAndMessage() {
     authenticate()
-    Mockito.`when`(service.checkout(any())).thenThrow(BillingNotConfiguredException())
+    whenever(service.checkout(any())).thenThrow(BillingNotConfiguredException())
 
     mockMvc.perform(post("/billing/checkout").header("Authorization", "Bearer test-token")
         .contentType(MediaType.APPLICATION_JSON)
@@ -173,7 +173,7 @@ class BillingControllerTest {
   @Test
   fun checkoutUnknownPlanIs404() {
     authenticate()
-    Mockito.`when`(service.checkout(any()))
+    whenever(service.checkout(any()))
       .thenThrow(ResponseStatusException(HttpStatus.NOT_FOUND, "Plan not found"))
 
     mockMvc.perform(post("/billing/checkout").header("Authorization", "Bearer test-token")
@@ -184,7 +184,7 @@ class BillingControllerTest {
 
   @Test
   fun webhookNeedsNoAuth() {
-    Mockito.`when`(service.handleWebhook(any(), any())).thenReturn(WebhookResponse(true))
+    whenever(service.handleWebhook(any(), any())).thenReturn(WebhookResponse(true))
 
     mockMvc.perform(post("/billing/webhook")
         .contentType(MediaType.APPLICATION_JSON)
@@ -195,7 +195,7 @@ class BillingControllerTest {
 
   @Test
   fun webhookUnknownSessionIs400() {
-    Mockito.`when`(service.handleWebhook(any(), any()))
+    whenever(service.handleWebhook(any(), any()))
       .thenThrow(ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown checkout session"))
 
     mockMvc.perform(post("/billing/webhook")
@@ -207,7 +207,7 @@ class BillingControllerTest {
   @Test
   fun entitlementMeReturnsActive() {
     authenticate()
-    Mockito.`when`(service.myEntitlement()).thenReturn(EntitlementResponse("SPRINT_PASS", "ACTIVE",
+    whenever(service.myEntitlement()).thenReturn(EntitlementResponse("SPRINT_PASS", "ACTIVE",
       Instant.parse("2026-12-12T00:00:00Z")))
 
     mockMvc.perform(get("/billing/entitlement/me").header("Authorization", "Bearer test-token"))
@@ -220,7 +220,7 @@ class BillingControllerTest {
   @Test
   fun entitlementMeReturnsNone() {
     authenticate()
-    Mockito.`when`(service.myEntitlement()).thenReturn(EntitlementResponse.none())
+    whenever(service.myEntitlement()).thenReturn(EntitlementResponse.none())
 
     mockMvc.perform(get("/billing/entitlement/me").header("Authorization", "Bearer test-token"))
       .andExpect(status().isOk)

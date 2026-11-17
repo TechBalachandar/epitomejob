@@ -12,12 +12,14 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
-import org.mockito.ArgumentCaptor
-import org.mockito.ArgumentMatchers.any
+import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.never
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import org.mockito.Mock
-import org.mockito.Mockito
 import org.mockito.Mockito.lenient
-import org.mockito.Mockito.verify
 import org.mockito.junit.jupiter.MockitoExtension
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
@@ -65,14 +67,14 @@ class NotificationServiceTest {
 
   /** No profile at all → no derived warning. */
   private fun noProfile() {
-    Mockito.`when`(profiles.findByUserId(USER_ID)).thenReturn(Optional.empty())
+    whenever(profiles.findByUserId(USER_ID)).thenReturn(Optional.empty())
   }
 
   /** Profile whose H-1B clock started `daysAgo` days before today (UTC). */
   private fun profileWithClockStartedDaysAgo(daysAgo: Long) {
     val profile = Profile(USER_ID)
     profile.h1bClockStartDate = LocalDate.now(ZoneOffset.UTC).minusDays(daysAgo)
-    Mockito.`when`(profiles.findByUserId(USER_ID)).thenReturn(Optional.of(profile))
+    whenever(profiles.findByUserId(USER_ID)).thenReturn(Optional.of(profile))
   }
 
   private fun storedPage(): List<Notification> {
@@ -85,7 +87,7 @@ class NotificationServiceTest {
   @Test
   fun createPersistsWithOwner() {
     authenticate()
-    Mockito.`when`(notifications.save(any())).thenAnswer { inv -> inv.getArgument<Notification>(0) }
+    whenever(notifications.save(any())).thenAnswer { inv -> inv.getArgument<Notification>(0) }
 
     val created = service().create(USER_ID, "APPROVAL_PROPOSED",
       "Approval proposed: Apply for a job",
@@ -102,14 +104,14 @@ class NotificationServiceTest {
     authenticate()
     noProfile()
     val stored = storedPage()
-    Mockito.`when`(notifications.findByUserId(any(), any()))
+    whenever(notifications.findByUserId(any(), any()))
       .thenReturn(PageImpl(stored, PageRequest.of(0, 20), 2))
 
     val page: NotificationPage = service().listMine(0, 20)
 
-    val pageable = ArgumentCaptor.forClass(Pageable::class.java)
+    val pageable = argumentCaptor<Pageable>()
     verify(notifications).findByUserId(any(), pageable.capture())
-    val sort: Sort = pageable.value.sort
+    val sort: Sort = pageable.firstValue.sort
     assertEquals(Sort.Direction.ASC, sort.getOrderFor("isRead")?.direction)
     assertEquals(Sort.Direction.DESC, sort.getOrderFor("createdAt")?.direction)
     assertEquals(2, page.content.size)
@@ -123,18 +125,18 @@ class NotificationServiceTest {
   fun listClampsSizeTo1And50() {
     authenticate()
     noProfile()
-    Mockito.`when`(notifications.findByUserId(any(), any()))
+    whenever(notifications.findByUserId(any(), any()))
       .thenReturn(PageImpl<Notification>(listOf(), PageRequest.of(0, 20), 0))
 
     service().listMine(0, 200)
-    val pageable = ArgumentCaptor.forClass(Pageable::class.java)
+    val pageable = argumentCaptor<Pageable>()
     verify(notifications).findByUserId(any(), pageable.capture())
-    assertEquals(50, pageable.value.pageSize)
+    assertEquals(50, pageable.firstValue.pageSize)
 
     service().listMine(0, 0)
-    verify(notifications, Mockito.times(2))
+    verify(notifications, times(2))
       .findByUserId(any(), pageable.capture())
-    assertEquals(1, pageable.value.pageSize)
+    assertEquals(1, pageable.firstValue.pageSize)
   }
 
   @Test
@@ -142,7 +144,7 @@ class NotificationServiceTest {
     authenticate()
     profileWithClockStartedDaysAgo(46) // daysLeft = 14
     val stored = storedPage()
-    Mockito.`when`(notifications.findByUserId(any(), any()))
+    whenever(notifications.findByUserId(any(), any()))
       .thenReturn(PageImpl(stored, PageRequest.of(0, 20), 2))
 
     val page = service().listMine(0, 20)
@@ -170,9 +172,9 @@ class NotificationServiceTest {
     val one = Profile(USER_ID)
     one.h1bClockStartDate = LocalDate.now(ZoneOffset.UTC).minusDays(59) // daysLeft = 1
     // Sequential stubbing: re-stubbing the same matcher would override the first.
-    Mockito.`when`(profiles.findByUserId(USER_ID))
+    whenever(profiles.findByUserId(USER_ID))
       .thenReturn(Optional.of(seven), Optional.of(one))
-    Mockito.`when`(notifications.findByUserId(any(), any()))
+    whenever(notifications.findByUserId(any(), any()))
       .thenReturn(PageImpl<Notification>(listOf(), PageRequest.of(0, 20), 0))
 
     var warning = service().listMine(0, 20).content[0]
@@ -188,7 +190,7 @@ class NotificationServiceTest {
   fun derivedWarningBand0IsLastDay() {
     authenticate()
     profileWithClockStartedDaysAgo(60) // daysLeft = 0
-    Mockito.`when`(notifications.findByUserId(any(), any()))
+    whenever(notifications.findByUserId(any(), any()))
       .thenReturn(PageImpl<Notification>(listOf(), PageRequest.of(0, 20), 0))
 
     val warning = service().listMine(0, 20).content[0]
@@ -202,7 +204,7 @@ class NotificationServiceTest {
   fun derivedWarningExpired() {
     authenticate()
     profileWithClockStartedDaysAgo(61) // daysLeft = -1
-    Mockito.`when`(notifications.findByUserId(any(), any()))
+    whenever(notifications.findByUserId(any(), any()))
       .thenReturn(PageImpl<Notification>(listOf(), PageRequest.of(0, 20), 0))
 
     val warning = service().listMine(0, 20).content[0]
@@ -219,9 +221,9 @@ class NotificationServiceTest {
     val farOut = Profile(USER_ID)
     farOut.h1bClockStartDate = LocalDate.now(ZoneOffset.UTC).minusDays(30) // daysLeft = 30
     // Sequential stubbing: re-stubbing the same matcher would override the first.
-    Mockito.`when`(profiles.findByUserId(USER_ID))
+    whenever(profiles.findByUserId(USER_ID))
       .thenReturn(Optional.of(noDate), Optional.of(farOut))
-    Mockito.`when`(notifications.findByUserId(any(), any()))
+    whenever(notifications.findByUserId(any(), any()))
       .thenReturn(PageImpl<Notification>(listOf(), PageRequest.of(0, 20), 0))
 
     assertTrue(service().listMine(0, 20).content.isEmpty())
@@ -236,7 +238,7 @@ class NotificationServiceTest {
     val profile = Profile(USER_ID)
     profile.h1bClockStartDate = LocalDate.now(ZoneOffset.UTC).minusDays(46)
     lenient().`when`(profiles.findByUserId(USER_ID)).thenReturn(Optional.of(profile))
-    Mockito.`when`(notifications.findByUserId(any(), any()))
+    whenever(notifications.findByUserId(any(), any()))
       .thenReturn(PageImpl<Notification>(listOf(), PageRequest.of(1, 20), 0))
 
     val page = service().listMine(1, 20)
@@ -246,11 +248,11 @@ class NotificationServiceTest {
   @Test
   fun unreadCountIncludesWarning() {
     authenticate()
-    Mockito.`when`(notifications.countByUserIdAndIsReadFalse(USER_ID)).thenReturn(2L)
+    whenever(notifications.countByUserIdAndIsReadFalse(USER_ID)).thenReturn(2L)
     val warning = Profile(USER_ID)
     warning.h1bClockStartDate = LocalDate.now(ZoneOffset.UTC).minusDays(46) // daysLeft = 14
     // Sequential stubbing: re-stubbing the same matcher would override the first.
-    Mockito.`when`(profiles.findByUserId(USER_ID))
+    whenever(profiles.findByUserId(USER_ID))
       .thenReturn(Optional.empty(), Optional.of(warning))
 
     assertEquals(2L, service().unreadCount())
@@ -261,8 +263,8 @@ class NotificationServiceTest {
   fun markReadFlipsStoredRow() {
     authenticate()
     val stored = notification("TRACKER_CHANGED", "Application updated")
-    Mockito.`when`(notifications.findById(stored.id)).thenReturn(Optional.of(stored))
-    Mockito.`when`(notifications.save(any())).thenAnswer { inv -> inv.getArgument<Notification>(0) }
+    whenever(notifications.findById(stored.id)).thenReturn(Optional.of(stored))
+    whenever(notifications.save(any())).thenAnswer { inv -> inv.getArgument<Notification>(0) }
 
     val dto = service().markRead(stored.id)
 
@@ -276,7 +278,7 @@ class NotificationServiceTest {
     authenticate()
     val other = Notification(UUID.randomUUID(),
       "TRACKER_CHANGED", "Application updated", "body", "/tracker")
-    Mockito.`when`(notifications.findById(other.id)).thenReturn(Optional.of(other))
+    whenever(notifications.findById(other.id)).thenReturn(Optional.of(other))
 
     val ex = assertThrows(ResponseStatusException::class.java) { service().markRead(other.id) }
     assertEquals(HttpStatus.NOT_FOUND, ex.statusCode)
@@ -286,7 +288,7 @@ class NotificationServiceTest {
   fun markReadMissingIdIs404() {
     authenticate()
     val missing = UUID.randomUUID()
-    Mockito.`when`(notifications.findById(missing)).thenReturn(Optional.empty())
+    whenever(notifications.findById(missing)).thenReturn(Optional.empty())
 
     val ex = assertThrows(ResponseStatusException::class.java) { service().markRead(missing) }
     assertEquals(HttpStatus.NOT_FOUND, ex.statusCode)
@@ -297,7 +299,7 @@ class NotificationServiceTest {
     authenticate()
     val first = notification("TRACKER_CHANGED", "Application updated")
     val second = notification("APPROVAL_PROPOSED", "Approval proposed: Apply for a job")
-    Mockito.`when`(notifications.findByUserIdAndIsReadFalse(USER_ID))
+    whenever(notifications.findByUserIdAndIsReadFalse(USER_ID))
       .thenReturn(listOf(first, second))
 
     assertEquals(2, service().markAllRead())

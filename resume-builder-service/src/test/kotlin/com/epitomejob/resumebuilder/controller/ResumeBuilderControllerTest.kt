@@ -17,8 +17,9 @@ import com.epitomejob.resumebuilder.service.TemplateService
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.mockito.ArgumentMatchers.eq
-import org.mockito.Mockito
+import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
@@ -50,10 +51,11 @@ import java.util.UUID
  * ownedDocument (export is never reached).
  *
  * Matcher note: the mocked services are Kotlin classes with non-null
- * parameters, so plain Mockito `any()` would NPE (it returns null) — the
- * stubs below use `eq(...)` with the exact values the controller passes
- * (the same MockMultipartFile instance, the same owned document instance,
- * JsonNodes structurally equal to the request/state JSON).
+ * parameters, so plain Mockito `any()`/`eq()` would NPE (they return null) —
+ * the stubs use mockito-kotlin's `any()`/`eq()` (non-null dummies / the value
+ * itself) with the exact values the controller passes (the same
+ * MockMultipartFile instance, the same owned document instance, JsonNodes
+ * structurally equal to the request/state JSON).
  */
 @WebMvcTest(ResumeBuilderController::class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -113,7 +115,7 @@ class ResumeBuilderControllerTest {
 
   @Test
   fun listTemplates() {
-    Mockito.`when`(templates.listTemplates()).thenReturn(
+    whenever(templates.listTemplates()).thenReturn(
       listOf(
         TemplateDto("modern", "Modern", "desc", "<html/>", mapper.createObjectNode())
       )
@@ -129,7 +131,7 @@ class ResumeBuilderControllerTest {
       "file", "resume.pdf",
       "application/pdf", "bytes".toByteArray()
     )
-    Mockito.`when`(parseService.parse(eq(file))).thenReturn(
+    whenever(parseService.parse(eq(file))).thenReturn(
       ParseResponse(mapper.readTree(STATE_JSON), "raw text")
     )
     mockMvc.perform(multipart("/resume-builder/parse").file(file))
@@ -139,7 +141,7 @@ class ResumeBuilderControllerTest {
 
   @Test
   fun createDocumentIs201() {
-    Mockito.`when`(
+    whenever(
       documents.create(eq(CreateDocumentRequest("Ada Resume", "modern", null)))
     ).thenReturn(docResponse())
     mockMvc.perform(
@@ -153,7 +155,7 @@ class ResumeBuilderControllerTest {
 
   @Test
   fun getDocument() {
-    Mockito.`when`(documents.get(DOC_ID)).thenReturn(docResponse())
+    whenever(documents.get(DOC_ID)).thenReturn(docResponse())
     mockMvc.perform(get("/resume-builder/documents/$DOC_ID"))
       .andExpect(status().isOk())
       .andExpect(jsonPath("$.title").value("Ada Resume"))
@@ -161,7 +163,7 @@ class ResumeBuilderControllerTest {
 
   @Test
   fun updateDocumentReplacesState() {
-    Mockito.`when`(
+    whenever(
       documents.update(
         eq(DOC_ID),
         eq(UpdateDocumentRequest("Ada v2", null, mapper.readTree(STATE_JSON)))
@@ -178,8 +180,8 @@ class ResumeBuilderControllerTest {
 
   @Test
   fun copilotForwardsVerbatim() {
-    Mockito.`when`(documents.ownedDocument(DOC_ID)).thenReturn(doc())
-    Mockito.`when`(
+    whenever(documents.ownedDocument(DOC_ID)).thenReturn(doc())
+    whenever(
       copilot.copilot(
         eq(DOC_ID),
         eq(mapper.readTree(STATE_JSON)),
@@ -199,8 +201,8 @@ class ResumeBuilderControllerTest {
 
   @Test
   fun exportPdfReturnsFileBytes() {
-    Mockito.`when`(documents.ownedDocument(DOC_ID)).thenReturn(doc())
-    Mockito.`when`(
+    whenever(documents.ownedDocument(DOC_ID)).thenReturn(doc())
+    whenever(
       export.exportPdf(eq("modern"), eq(mapper.readTree(STATE_JSON)))
     ).thenReturn("%PDF-fake".toByteArray())
     mockMvc.perform(post("/resume-builder/documents/$DOC_ID/export?format=pdf"))
@@ -210,7 +212,7 @@ class ResumeBuilderControllerTest {
 
   @Test
   fun exportBadFormatIs400WithoutCallingExport() {
-    Mockito.`when`(documents.ownedDocument(DOC_ID)).thenReturn(doc())
+    whenever(documents.ownedDocument(DOC_ID)).thenReturn(doc())
     mockMvc.perform(post("/resume-builder/documents/$DOC_ID/export?format=txt"))
       .andExpect(status().isBadRequest())
   }
@@ -219,8 +221,8 @@ class ResumeBuilderControllerTest {
   fun saveToProfileReturnsResumeId() {
     val resumeId = UUID.randomUUID()
     val document = doc()
-    Mockito.`when`(documents.ownedDocument(DOC_ID)).thenReturn(document)
-    Mockito.`when`(
+    whenever(documents.ownedDocument(DOC_ID)).thenReturn(document)
+    whenever(
       saveToProfile.saveToProfile(
         eq(document),
         eq(mapper.readTree(STATE_JSON)),

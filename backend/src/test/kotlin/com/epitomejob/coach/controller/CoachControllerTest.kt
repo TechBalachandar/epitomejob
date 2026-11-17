@@ -7,10 +7,10 @@ import com.epitomejob.common.security.SecurityConfig
 import com.epitomejob.identity.service.JwtService
 import io.jsonwebtoken.Claims
 import org.junit.jupiter.api.Test
-import org.mockito.ArgumentMatchers.any
-import org.mockito.ArgumentMatchers.anyString
-import org.mockito.ArgumentMatchers.eq
-import org.mockito.Mockito
+import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
@@ -49,16 +49,16 @@ class CoachControllerTest {
   private lateinit var jwt: JwtService
 
   private fun authenticate() {
-    val claims = Mockito.mock(Claims::class.java)
-    Mockito.`when`(claims.subject).thenReturn(USER_ID.toString())
-    Mockito.`when`(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
-    Mockito.`when`(jwt.parse("test-token")).thenReturn(claims)
+    val claims = mock<Claims>()
+    whenever(claims.subject).thenReturn(USER_ID.toString())
+    whenever(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
+    whenever(jwt.parse("test-token")).thenReturn(claims)
   }
 
   @Test
   fun chatReturnsAgentBrainResponseVerbatim() {
     authenticate()
-    Mockito.`when`(agentBrain.chat(eq("find me a job"), eq(USER_ID), eq("Bearer <redacted>")))
+    whenever(agentBrain.chat(eq("find me a job"), eq(USER_ID), eq("Bearer <redacted>")))
       .thenReturn(ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(AGENT_BODY))
 
     mockMvc.perform(
@@ -75,7 +75,7 @@ class CoachControllerTest {
   @Test
   fun chatForwardsAgentBrain401() {
     authenticate()
-    Mockito.`when`(agentBrain.chat(anyString(), any(), anyString()))
+    whenever(agentBrain.chat(any(), any(), any()))
       .thenReturn(
         ResponseEntity.status(401)
           .contentType(MediaType.APPLICATION_JSON)
@@ -95,7 +95,7 @@ class CoachControllerTest {
   @Test
   fun chatWhenAgentBrainUnreachableIs502() {
     authenticate()
-    Mockito.`when`(agentBrain.chat(anyString(), any(), anyString()))
+    whenever(agentBrain.chat(any(), any(), any()))
       .thenThrow(AgentUnavailableException(RuntimeException("refused")))
 
     mockMvc.perform(

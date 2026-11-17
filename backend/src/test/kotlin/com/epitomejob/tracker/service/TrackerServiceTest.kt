@@ -9,12 +9,12 @@ import com.epitomejob.tracker.repository.TrackerRepository
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
-import org.mockito.ArgumentMatchers.any
-import org.mockito.ArgumentMatchers.eq
+import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import org.mockito.Mock
-import org.mockito.Mockito
-import org.mockito.Mockito.never
-import org.mockito.Mockito.verify
 import org.mockito.junit.jupiter.MockitoExtension
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
@@ -67,9 +67,9 @@ class TrackerServiceTest {
   @Test
   fun createSavesEntry() {
     authenticate()
-    Mockito.`when`(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()))
-    Mockito.`when`(entries.findByUserIdAndJobId(USER_ID, JOB_ID)).thenReturn(Optional.empty())
-    Mockito.`when`(entries.save(any())).thenAnswer { inv -> inv.getArgument<TrackerEntry>(0) }
+    whenever(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()))
+    whenever(entries.findByUserIdAndJobId(USER_ID, JOB_ID)).thenReturn(Optional.empty())
+    whenever(entries.save(any())).thenAnswer { inv -> inv.getArgument<TrackerEntry>(0) }
 
     val dto: TrackerDto = service().create(JOB_ID, null)
 
@@ -82,8 +82,8 @@ class TrackerServiceTest {
   @Test
   fun createDuplicateIs409() {
     authenticate()
-    Mockito.`when`(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()))
-    Mockito.`when`(entries.findByUserIdAndJobId(USER_ID, JOB_ID))
+    whenever(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()))
+    whenever(entries.findByUserIdAndJobId(USER_ID, JOB_ID))
       .thenReturn(Optional.of(TrackerEntry(USER_ID, JOB_ID, null)))
 
     val ex = assertThrows(ResponseStatusException::class.java) {
@@ -95,7 +95,7 @@ class TrackerServiceTest {
   @Test
   fun createMissingJobIs404() {
     authenticate()
-    Mockito.`when`(jobs.findById(JOB_ID)).thenReturn(Optional.empty())
+    whenever(jobs.findById(JOB_ID)).thenReturn(Optional.empty())
 
     val ex = assertThrows(ResponseStatusException::class.java) {
       service().create(JOB_ID, null)
@@ -107,7 +107,7 @@ class TrackerServiceTest {
   fun updateInvalidStatusIs400() {
     authenticate()
     val entry = TrackerEntry(USER_ID, JOB_ID, null)
-    Mockito.`when`(entries.findById(entry.id)).thenReturn(Optional.of(entry))
+    whenever(entries.findById(entry.id)).thenReturn(Optional.of(entry))
 
     val ex = assertThrows(ResponseStatusException::class.java) {
       service().update(entry.id, "HIRED", null)
@@ -120,9 +120,9 @@ class TrackerServiceTest {
     authenticate()
     val entry = TrackerEntry(USER_ID, JOB_ID, null)
     entry.notes = "Spoke to recruiter"
-    Mockito.`when`(entries.findById(entry.id)).thenReturn(Optional.of(entry))
-    Mockito.`when`(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()))
-    Mockito.`when`(entries.save(any())).thenAnswer { inv -> inv.getArgument<TrackerEntry>(0) }
+    whenever(entries.findById(entry.id)).thenReturn(Optional.of(entry))
+    whenever(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()))
+    whenever(entries.save(any())).thenAnswer { inv -> inv.getArgument<TrackerEntry>(0) }
 
     val dto = service().update(entry.id, "APPLIED", null)
 
@@ -134,9 +134,9 @@ class TrackerServiceTest {
   fun updateStatusChangeCreatesTrackerChangedNotification() {
     authenticate()
     val entry = TrackerEntry(USER_ID, JOB_ID, null)
-    Mockito.`when`(entries.findById(entry.id)).thenReturn(Optional.of(entry))
-    Mockito.`when`(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()))
-    Mockito.`when`(entries.save(any())).thenAnswer { inv -> inv.getArgument<TrackerEntry>(0) }
+    whenever(entries.findById(entry.id)).thenReturn(Optional.of(entry))
+    whenever(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()))
+    whenever(entries.save(any())).thenAnswer { inv -> inv.getArgument<TrackerEntry>(0) }
 
     val dto = service().update(entry.id, "APPLIED", null)
 
@@ -152,9 +152,9 @@ class TrackerServiceTest {
     authenticate()
     val entry = TrackerEntry(USER_ID, JOB_ID, null)
     entry.status = "APPLIED"
-    Mockito.`when`(entries.findById(entry.id)).thenReturn(Optional.of(entry))
-    Mockito.`when`(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()))
-    Mockito.`when`(entries.save(any())).thenAnswer { inv -> inv.getArgument<TrackerEntry>(0) }
+    whenever(entries.findById(entry.id)).thenReturn(Optional.of(entry))
+    whenever(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()))
+    whenever(entries.save(any())).thenAnswer { inv -> inv.getArgument<TrackerEntry>(0) }
 
     service().update(entry.id, "APPLIED", null)
 
@@ -165,9 +165,9 @@ class TrackerServiceTest {
   fun updateNotesOnlyCreatesNoNotification() {
     authenticate()
     val entry = TrackerEntry(USER_ID, JOB_ID, null)
-    Mockito.`when`(entries.findById(entry.id)).thenReturn(Optional.of(entry))
-    Mockito.`when`(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()))
-    Mockito.`when`(entries.save(any())).thenAnswer { inv -> inv.getArgument<TrackerEntry>(0) }
+    whenever(entries.findById(entry.id)).thenReturn(Optional.of(entry))
+    whenever(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()))
+    whenever(entries.save(any())).thenAnswer { inv -> inv.getArgument<TrackerEntry>(0) }
 
     val dto = service().update(entry.id, "SAVED", "Spoke to recruiter")
 
@@ -179,7 +179,7 @@ class TrackerServiceTest {
   fun updateNotOwnerIs404() {
     authenticate()
     val entry = TrackerEntry(UUID.randomUUID(), JOB_ID, null)
-    Mockito.`when`(entries.findById(entry.id)).thenReturn(Optional.of(entry))
+    whenever(entries.findById(entry.id)).thenReturn(Optional.of(entry))
 
     val ex = assertThrows(ResponseStatusException::class.java) {
       service().update(entry.id, "APPLIED", null)
@@ -191,7 +191,7 @@ class TrackerServiceTest {
   fun deleteNotOwnerIs404() {
     authenticate()
     val entry = TrackerEntry(UUID.randomUUID(), JOB_ID, null)
-    Mockito.`when`(entries.findById(entry.id)).thenReturn(Optional.of(entry))
+    whenever(entries.findById(entry.id)).thenReturn(Optional.of(entry))
 
     val ex = assertThrows(ResponseStatusException::class.java) {
       service().delete(entry.id)
@@ -203,8 +203,8 @@ class TrackerServiceTest {
   fun listMineIsNewestFirst() {
     authenticate()
     val entry = TrackerEntry(USER_ID, JOB_ID, null)
-    Mockito.`when`(entries.findByUserIdOrderByCreatedAtDesc(USER_ID)).thenReturn(listOf(entry))
-    Mockito.`when`(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()))
+    whenever(entries.findByUserIdOrderByCreatedAtDesc(USER_ID)).thenReturn(listOf(entry))
+    whenever(jobs.findById(JOB_ID)).thenReturn(Optional.of(job()))
 
     val list: List<TrackerDto> = service().listMine()
 
