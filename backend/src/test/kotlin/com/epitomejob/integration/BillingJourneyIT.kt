@@ -114,7 +114,7 @@ class BillingJourneyIT {
     // 1. Status: enabled, fake provider.
     val status = rest.exchange(
       "/billing/status", HttpMethod.GET,
-      HttpEntity(bearer(token)), Map::class.java
+      HttpEntity<Void>(bearer(token)), Map::class.java
     )
     assertEquals(HttpStatus.OK, status.statusCode)
     assertEquals(true, status.body?.get("enabled"))
@@ -123,7 +123,7 @@ class BillingJourneyIT {
     // 2. Plans: three seeded plans, seed order, exact prices.
     val plans = rest.exchange(
       "/billing/plans", HttpMethod.GET,
-      HttpEntity(bearer(token)), List::class.java
+      HttpEntity<Void>(bearer(token)), List::class.java
     )
     assertEquals(HttpStatus.OK, plans.statusCode)
     assertEquals(3, plans.body?.size)
@@ -140,7 +140,7 @@ class BillingJourneyIT {
     // 3. No entitlement yet.
     val none = rest.exchange(
       "/billing/entitlement/me", HttpMethod.GET,
-      HttpEntity(bearer(token)), Map::class.java
+      HttpEntity<Void>(bearer(token)), Map::class.java
     )
     assertEquals(HttpStatus.OK, none.statusCode)
     assertNull(none.body?.get("planCode"))
@@ -163,7 +163,7 @@ class BillingJourneyIT {
     val providerSessionId = checkoutSessions.findById(UUID.fromString(checkoutSessionId))
       .orElseThrow().providerSessionId
     assertNotNull(providerSessionId)
-    assertTrue(providerSessionId.startsWith("fake_"))
+    assertTrue(providerSessionId?.startsWith("fake_") == true)
 
     // 5. Webhook: unknown session is 400.
     val unknown = rest.postForEntity(
@@ -191,7 +191,7 @@ class BillingJourneyIT {
     // 7. Entitlement is ACTIVE with an expiry (SPRINT_PASS = 30 days).
     val entitlement = rest.exchange(
       "/billing/entitlement/me", HttpMethod.GET,
-      HttpEntity(bearer(token)), Map::class.java
+      HttpEntity<Void>(bearer(token)), Map::class.java
     )
     assertEquals(HttpStatus.OK, entitlement.statusCode)
     assertEquals("SPRINT_PASS", entitlement.body?.get("planCode"))
@@ -242,7 +242,7 @@ class BillingJourneyIT {
     assertNull(human.body?.get("checkoutUrl"))
     val still = rest.exchange(
       "/billing/entitlement/me", HttpMethod.GET,
-      HttpEntity(bearer(token)), Map::class.java
+      HttpEntity<Void>(bearer(token)), Map::class.java
     )
     assertEquals("SPRINT_PASS", still.body?.get("planCode"))
     assertEquals("ACTIVE", still.body?.get("status"))

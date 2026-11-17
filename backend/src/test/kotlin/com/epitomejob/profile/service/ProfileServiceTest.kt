@@ -136,7 +136,7 @@ class ProfileServiceTest {
     verify(profiles).save(saved.capture())
     assertEquals(
       listOf("Spring Boot", "Java", "LangGraph"),
-      List.copyOf(saved.value.skills),
+      saved.value.skills.toList(),
       "entity keeps request order after trim/dedupe"
     )
   }

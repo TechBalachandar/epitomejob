@@ -1,5 +1,6 @@
 package com.epitomejob.profile.controller
 
+import com.epitomejob.common.constants.AppConstants
 import com.epitomejob.common.security.SecurityConfig
 import com.epitomejob.identity.service.JwtService
 import com.epitomejob.profile.dto.ProfileResponse
@@ -104,7 +105,7 @@ class ProfileControllerTest {
       val req: ProfileUpdateRequest = inv.getArgument(0)
       ProfileResponse(
         UUID.randomUUID(), USER_ID, "Java Developer", null,
-        "Reston, VA", "REMOTE", null, null, req.currency, req.visibility,
+        "Reston, VA", "REMOTE", null, null, req.currency ?: AppConstants.Profile.DEFAULT_CURRENCY, req.visibility ?: AppConstants.Profile.DEFAULT_VISIBILITY,
         req.skills ?: listOf(), req.h1bClockStartDate, 60, Instant.now(), Instant.now(),
         req.linkedinUrl, req.workAuthorization
       )
@@ -220,7 +221,7 @@ class ProfileControllerTest {
       val req: ProfileUpdateRequest = inv.getArgument(0)
       ProfileResponse(
         UUID.randomUUID(), USER_ID, "Java Developer", null,
-        "Reston, VA", "REMOTE", null, null, req.currency, req.visibility,
+        "Reston, VA", "REMOTE", null, null, req.currency ?: AppConstants.Profile.DEFAULT_CURRENCY, req.visibility ?: AppConstants.Profile.DEFAULT_VISIBILITY,
         req.skills ?: listOf(), req.h1bClockStartDate, 60, Instant.now(), Instant.now(),
         req.linkedinUrl, req.workAuthorization
       )

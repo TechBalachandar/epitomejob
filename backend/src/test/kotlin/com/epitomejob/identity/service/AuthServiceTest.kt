@@ -14,7 +14,6 @@ import org.springframework.http.HttpStatus
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
-import java.util.List
 import java.util.Optional
 import java.util.UUID
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -173,7 +172,7 @@ class AuthServiceTest {
     Mockito.`when`(refreshTokens.findByTokenHash(HashUtil.sha256("old")))
       .thenReturn(Optional.of(revoked))
     Mockito.`when`(jwt.extractUserId("old")).thenReturn(USER_ID)
-    Mockito.`when`(refreshTokens.findByUserIdAndRevokedFalse(USER_ID)).thenReturn(List.of(live))
+    Mockito.`when`(refreshTokens.findByUserIdAndRevokedFalse(USER_ID)).thenReturn(mutableListOf(live))
 
     val ex = assertThrows(ResponseStatusException::class.java) { service().refresh("old") }
 

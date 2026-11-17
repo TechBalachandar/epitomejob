@@ -71,7 +71,7 @@ class NotificationServiceTest {
   /** Profile whose H-1B clock started `daysAgo` days before today (UTC). */
   private fun profileWithClockStartedDaysAgo(daysAgo: Long) {
     val profile = Profile(USER_ID)
-    profile.setH1bClockStartDate(LocalDate.now(ZoneOffset.UTC).minusDays(daysAgo))
+    profile.h1bClockStartDate = LocalDate.now(ZoneOffset.UTC).minusDays(daysAgo)
     Mockito.`when`(profiles.findByUserId(USER_ID)).thenReturn(Optional.of(profile))
   }
 
@@ -166,9 +166,9 @@ class NotificationServiceTest {
   fun derivedWarningBand7AndOneDay() {
     authenticate()
     val seven = Profile(USER_ID)
-    seven.setH1bClockStartDate(LocalDate.now(ZoneOffset.UTC).minusDays(53)) // daysLeft = 7
+    seven.h1bClockStartDate = LocalDate.now(ZoneOffset.UTC).minusDays(53) // daysLeft = 7
     val one = Profile(USER_ID)
-    one.setH1bClockStartDate(LocalDate.now(ZoneOffset.UTC).minusDays(59)) // daysLeft = 1
+    one.h1bClockStartDate = LocalDate.now(ZoneOffset.UTC).minusDays(59) // daysLeft = 1
     // Sequential stubbing: re-stubbing the same matcher would override the first.
     Mockito.`when`(profiles.findByUserId(USER_ID))
       .thenReturn(Optional.of(seven), Optional.of(one))
@@ -217,7 +217,7 @@ class NotificationServiceTest {
     authenticate()
     val noDate = Profile(USER_ID)
     val farOut = Profile(USER_ID)
-    farOut.setH1bClockStartDate(LocalDate.now(ZoneOffset.UTC).minusDays(30)) // daysLeft = 30
+    farOut.h1bClockStartDate = LocalDate.now(ZoneOffset.UTC).minusDays(30) // daysLeft = 30
     // Sequential stubbing: re-stubbing the same matcher would override the first.
     Mockito.`when`(profiles.findByUserId(USER_ID))
       .thenReturn(Optional.of(noDate), Optional.of(farOut))
@@ -234,7 +234,7 @@ class NotificationServiceTest {
     // Active clock (14 days left) — would warn on page 0, but the service
     // never loads the profile for later pages, so this stub is lenient.
     val profile = Profile(USER_ID)
-    profile.setH1bClockStartDate(LocalDate.now(ZoneOffset.UTC).minusDays(46))
+    profile.h1bClockStartDate = LocalDate.now(ZoneOffset.UTC).minusDays(46)
     lenient().`when`(profiles.findByUserId(USER_ID)).thenReturn(Optional.of(profile))
     Mockito.`when`(notifications.findByUserId(any(), any()))
       .thenReturn(PageImpl<Notification>(listOf(), PageRequest.of(1, 20), 0))
@@ -248,7 +248,7 @@ class NotificationServiceTest {
     authenticate()
     Mockito.`when`(notifications.countByUserIdAndIsReadFalse(USER_ID)).thenReturn(2L)
     val warning = Profile(USER_ID)
-    warning.setH1bClockStartDate(LocalDate.now(ZoneOffset.UTC).minusDays(46)) // daysLeft = 14
+    warning.h1bClockStartDate = LocalDate.now(ZoneOffset.UTC).minusDays(46) // daysLeft = 14
     // Sequential stubbing: re-stubbing the same matcher would override the first.
     Mockito.`when`(profiles.findByUserId(USER_ID))
       .thenReturn(Optional.empty(), Optional.of(warning))

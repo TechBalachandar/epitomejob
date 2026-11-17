@@ -143,7 +143,7 @@ class ApprovalControllerTest {
     // re-runs the security chain without the authenticated context and 403s
     // (a real container restores it — this is a test-harness quirk, not an
     // app bug). Assert on the response the initial dispatch already wrote.
-    result.asyncResult(2000)
+    result.getAsyncResult(2000)
     assertTrue(
       result.response.contentAsString.contains("pending"),
       "SSE event should carry the pending list, was: " + result.response.contentAsString

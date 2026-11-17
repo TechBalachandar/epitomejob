@@ -81,10 +81,10 @@ class W2JourneyIT {
 
   /** A 50+ word answer with STAR words, a digit, and a job skill token. */
   private fun answerText(): String {
-    return "In my last role the situation was a slow checkout API and the task was to "
-      + "fix it without downtime. My action was to profile the service, add caching "
-      + "with Kafka events, and tune the database queries. The result was latency down "
-      + "by 40 percent for 10000 users and the outcome was a faster checkout for everyone."
+    return "In my last role the situation was a slow checkout API and the task was to " +
+      "fix it without downtime. My action was to profile the service, add caching " +
+      "with Kafka events, and tune the database queries. The result was latency down " +
+      "by 40 percent for 10000 users and the outcome was a faster checkout for everyone."
   }
 
   @Test
@@ -123,7 +123,7 @@ class W2JourneyIT {
     assertEquals(HttpStatus.OK, profile.statusCode)
 
     // 1. Jobs: 18 seeded.
-    val jobs = rest.exchange("/jobs", HttpMethod.GET, HttpEntity(bearer(token)), Map::class.java)
+    val jobs = rest.exchange("/jobs", HttpMethod.GET, HttpEntity<Void>(bearer(token)), Map::class.java)
     assertEquals(HttpStatus.OK, jobs.statusCode)
     assertEquals(18, jobs.body?.get("totalElements"))
     val content = jobs.body?.get("content") as List<Map<String, Any?>>
@@ -133,14 +133,14 @@ class W2JourneyIT {
 
     // Filtered search narrows the list.
     val filtered = rest.exchange(
-      "/jobs?query=Backend", HttpMethod.GET, HttpEntity(bearer(token)), Map::class.java
+      "/jobs?query=Backend", HttpMethod.GET, HttpEntity<Void>(bearer(token)), Map::class.java
     )
     assertEquals(HttpStatus.OK, filtered.statusCode)
     assertTrue((filtered.body?.get("totalElements") as Int) >= 4)
 
     // 2. Matches: top 20, score desc, first match has reasons.
     val matches = rest.exchange(
-      "/matches/me", HttpMethod.GET, HttpEntity(bearer(token)), List::class.java
+      "/matches/me", HttpMethod.GET, HttpEntity<Void>(bearer(token)), List::class.java
     )
     assertEquals(HttpStatus.OK, matches.statusCode)
     assertEquals(18, matches.body?.size)
@@ -149,7 +149,7 @@ class W2JourneyIT {
     assertEquals("PROFILE", first["source"])
 
     val oneMatch = rest.exchange(
-      "/matches/$jobId", HttpMethod.GET, HttpEntity(bearer(token)), Map::class.java
+      "/matches/$jobId", HttpMethod.GET, HttpEntity<Void>(bearer(token)), Map::class.java
     )
     assertEquals(HttpStatus.OK, oneMatch.statusCode)
     assertEquals(jobId, (oneMatch.body?.get("job") as Map<String, Any?>)["id"])
@@ -180,7 +180,7 @@ class W2JourneyIT {
     // 4. Interview: 5 questions for the job's role, then a session.
     val questions = rest.exchange(
       "/interviews/questions?jobId=$jobId", HttpMethod.GET,
-      HttpEntity(bearer(token)), List::class.java
+      HttpEntity<Void>(bearer(token)), List::class.java
     )
     assertEquals(HttpStatus.OK, questions.statusCode)
     assertEquals(5, questions.body?.size)
@@ -212,7 +212,7 @@ class W2JourneyIT {
 
     val done = rest.exchange(
       "/interviews/sessions/$sessionId", HttpMethod.GET,
-      HttpEntity(bearer(token)), Map::class.java
+      HttpEntity<Void>(bearer(token)), Map::class.java
     )
     assertEquals(HttpStatus.OK, done.statusCode)
     assertEquals("COMPLETED", done.body?.get("status"))
@@ -232,7 +232,7 @@ class W2JourneyIT {
     assertEquals(HttpStatus.OK, replaced.statusCode)
     val again = rest.exchange(
       "/interviews/sessions/$sessionId", HttpMethod.GET,
-      HttpEntity(bearer(token)), Map::class.java
+      HttpEntity<Void>(bearer(token)), Map::class.java
     )
     assertEquals("COMPLETED", again.body?.get("status"))
     assertEquals(5, (again.body?.get("answers") as List<*>).size)
@@ -253,7 +253,7 @@ class W2JourneyIT {
 
     val response = rest.exchange(
       "/interviews/questions", HttpMethod.GET,
-      HttpEntity(bearer(token)), Map::class.java
+      HttpEntity<Void>(bearer(token)), Map::class.java
     )
     assertEquals(HttpStatus.BAD_REQUEST, response.statusCode)
   }

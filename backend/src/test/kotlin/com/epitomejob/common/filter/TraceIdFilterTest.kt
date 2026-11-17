@@ -50,7 +50,7 @@ class TraceIdFilterTest {
     assertNotNull(generated)
     assertTrue(
       generated!!.matches(
-        "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+        "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}".toRegex()
       ),
       "generated id must be a UUID, was: $generated"
     )

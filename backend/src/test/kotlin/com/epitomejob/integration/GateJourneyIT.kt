@@ -169,7 +169,7 @@ class GateJourneyIT {
 
     val approve = rest.postForEntity(
       "/approvals/$approvalId/approve",
-      HttpEntity(bearer(token)), Map::class.java
+      HttpEntity<Void>(bearer(token)), Map::class.java
     )
     assertEquals(HttpStatus.OK, approve.statusCode)
     assertEquals("APPROVED", approve.body?.get("status"))
@@ -177,7 +177,7 @@ class GateJourneyIT {
     // 5. No pending approvals left
     val pending = rest.exchange(
       "/approvals/pending", HttpMethod.GET,
-      HttpEntity(bearer(token)), List::class.java
+      HttpEntity<Void>(bearer(token)), List::class.java
     )
     assertEquals(HttpStatus.OK, pending.statusCode)
     assertTrue(pending.body?.isEmpty() ?: false)
