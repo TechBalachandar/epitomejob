@@ -2,6 +2,7 @@ package com.epitomejob.resumebuilder.service
 
 import com.epitomejob.resumebuilder.dto.ResumeBuilderDtos.TemplateDto
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import org.junit.jupiter.api.Test
 import org.springframework.web.server.ResponseStatusException
@@ -21,18 +22,18 @@ class TemplateServiceTest {
     contact.put("phone", "555-1234")
     contact.put("linkedin", "linkedin.com/in/adalovelace")
     contact.put("location", "London")
-    state.set("contact", contact)
+    state.set<JsonNode>("contact", contact)
     state.put("summary", "Pioneer & builder")
-    state.set("experience", mapper.createArrayNode())
-    state.set("education", mapper.createArrayNode())
-    state.set("skills", mapper.createArrayNode())
+    state.set<JsonNode>("experience", mapper.createArrayNode())
+    state.set<JsonNode>("education", mapper.createArrayNode())
+    state.set<JsonNode>("skills", mapper.createArrayNode())
     return state
   }
 
   @Test
   fun listsThreeTemplates() {
     assertThat(service.listTemplates()).hasSize(3)
-    assertThat(service.listTemplates()).extracting { it.id }
+    assertThat(service.listTemplates()).extracting("id")
       .containsExactlyInAnyOrder("modern", "classic", "minimal")
   }
 

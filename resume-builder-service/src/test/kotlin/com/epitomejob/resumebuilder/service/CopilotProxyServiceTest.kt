@@ -79,7 +79,7 @@ class CopilotProxyServiceTest {
         UUID.randomUUID(), ObjectMapper().createObjectNode(),
         requestWith("improve my summary"), "Bearer token"
       )
-    assertThat(response.statusCode.value).isEqualTo(200)
+    assertThat(response.statusCode.value()).isEqualTo(200)
     assertThat(response.body).contains("Sharpen the summary")
   }
 
@@ -90,7 +90,7 @@ class CopilotProxyServiceTest {
         UUID.randomUUID(), ObjectMapper().createObjectNode(),
         requestWith("force-401"), "Bearer token"
       )
-    assertThat(response.statusCode.value).isEqualTo(401)
+    assertThat(response.statusCode.value()).isEqualTo(401)
     assertThat(response.body).contains("bad token")
   }
 
@@ -101,7 +101,7 @@ class CopilotProxyServiceTest {
         UUID.randomUUID(), ObjectMapper().createObjectNode(),
         requestWith("force-500"), "Bearer token"
       )
-    assertThat(response.statusCode.value).isEqualTo(500)
+    assertThat(response.statusCode.value()).isEqualTo(500)
     assertThat(response.body).contains("COPILOT_FAILED")
   }
 

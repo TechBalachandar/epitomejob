@@ -1,6 +1,7 @@
 package com.epitomejob.resumebuilder.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import org.apache.poi.xwpf.usermodel.XWPFDocument
 import org.junit.jupiter.api.Test
@@ -21,21 +22,21 @@ class ExportServiceTest {
     contact.put("phone", "555-1234")
     contact.put("linkedin", "")
     contact.put("location", "London")
-    state.set("contact", contact)
+    state.set<JsonNode>("contact", contact)
     state.put("summary", "Analytical engine pioneer.")
     val job = mapper.createObjectNode()
     job.put("title", "Senior Engineer")
     job.put("company", "Analytical Engines Ltd")
     job.put("startDate", "Jan 2020")
     job.put("endDate", "Present")
-    job.set("bullets", mapper.createArrayNode().add("Designed the first algorithm"))
-    state.set("experience", mapper.createArrayNode().add(job))
+    job.set<JsonNode>("bullets", mapper.createArrayNode().add("Designed the first algorithm"))
+    state.set<JsonNode>("experience", mapper.createArrayNode().add(job))
     val edu = mapper.createObjectNode()
     edu.put("degree", "BSc Mathematics")
     edu.put("school", "University of London")
     edu.put("year", "2015")
-    state.set("education", mapper.createArrayNode().add(edu))
-    state.set("skills", mapper.createArrayNode().add("Java").add("Spring Boot"))
+    state.set<JsonNode>("education", mapper.createArrayNode().add(edu))
+    state.set<JsonNode>("skills", mapper.createArrayNode().add("Java").add("Spring Boot"))
     state.put("rawText", "")
     return state
   }

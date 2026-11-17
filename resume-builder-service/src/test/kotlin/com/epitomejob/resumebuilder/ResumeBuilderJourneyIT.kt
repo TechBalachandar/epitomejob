@@ -80,9 +80,9 @@ class ResumeBuilderJourneyIT {
         exchange.responseBody.use { out -> out.write(bytes) }
       }
       stub.createContext("/resumes") { exchange ->
-        val response = "{\"id\":\"" + STUB_RESUME_ID + "\",\"fileName\":\"ada-resume.pdf\","
-          + "\"fileType\":\"pdf\",\"fileSize\":123,\"status\":\"READY\","
-          + "\"createdAt\":\"2026-11-14T00:00:00Z\",\"label\":\"Android Developer\"}"
+        val response = "{\"id\":\"" + STUB_RESUME_ID + "\",\"fileName\":\"ada-resume.pdf\"," +
+          "\"fileType\":\"pdf\",\"fileSize\":123,\"status\":\"READY\"," +
+          "\"createdAt\":\"2026-11-14T00:00:00Z\",\"label\":\"Android Developer\"}"
         val bytes = response.toByteArray(StandardCharsets.UTF_8)
         exchange.responseHeaders.set("Content-Type", "application/json")
         exchange.sendResponseHeaders(201, bytes.size.toLong())
@@ -148,7 +148,7 @@ class ResumeBuilderJourneyIT {
       url("/resume-builder/templates"),
       HttpMethod.GET, HttpEntity<String>(authHeaders(USER_ID)), String::class.java
     )
-    assertThat(templates.statusCode.value).isEqualTo(200)
+    assertThat(templates.statusCode.value()).isEqualTo(200)
     assertThat(templates.body).contains("modern", "classic", "minimal")
 
     // 2. Parse the PDF fixture.
@@ -166,7 +166,7 @@ class ResumeBuilderJourneyIT {
       url("/resume-builder/parse"),
       HttpMethod.POST, HttpEntity(multipart, multipartHeaders), String::class.java
     )
-    assertThat(parsed.statusCode.value).isEqualTo(200)
+    assertThat(parsed.statusCode.value()).isEqualTo(200)
     val parsedState: JsonNode = mapper.readTree(parsed.body).path("state")
     assertThat(parsedState.path("contact").path("fullName").asText()).isEqualTo("Ada Lovelace")
     assertThat(parsedState.path("rawText").asText()).contains("Designed the first algorithm")
@@ -184,7 +184,7 @@ class ResumeBuilderJourneyIT {
       url("/resume-builder/documents"),
       HttpMethod.POST, HttpEntity(createBody, jsonHeaders), String::class.java
     )
-    assertThat(created.statusCode.value).isEqualTo(201)
+    assertThat(created.statusCode.value()).isEqualTo(201)
     val documentId = UUID.fromString(mapper.readTree(created.body).path("id").asText())
 
     // 4. Get it back; another user gets 404 (ownership).
@@ -192,13 +192,13 @@ class ResumeBuilderJourneyIT {
       url("/resume-builder/documents/$documentId"),
       HttpMethod.GET, HttpEntity<String>(authHeaders(USER_ID)), String::class.java
     )
-    assertThat(got.statusCode.value).isEqualTo(200)
+    assertThat(got.statusCode.value()).isEqualTo(200)
     assertThat(mapper.readTree(got.body).path("title").asText()).isEqualTo("Ada Resume")
     val forbidden: ResponseEntity<String> = rest.exchange(
       url("/resume-builder/documents/$documentId"),
       HttpMethod.GET, HttpEntity<String>(authHeaders(OTHER_USER_ID)), String::class.java
     )
-    assertThat(forbidden.statusCode.value).isEqualTo(404)
+    assertThat(forbidden.statusCode.value()).isEqualTo(404)
 
     // 5. Full state replace via PUT.
     val updatedState: ObjectNode = (parsedState as ObjectNode).deepCopy()
@@ -212,7 +212,7 @@ class ResumeBuilderJourneyIT {
       url("/resume-builder/documents/$documentId"),
       HttpMethod.PUT, HttpEntity(updateBody, jsonHeaders), String::class.java
     )
-    assertThat(updated.statusCode.value).isEqualTo(200)
+    assertThat(updated.statusCode.value()).isEqualTo(200)
     assertThat(mapper.readTree(updated.body).path("state").path("summary").asText())
       .isEqualTo("Updated summary.")
 
@@ -221,7 +221,7 @@ class ResumeBuilderJourneyIT {
       url("/resume-builder/documents/$documentId/copilot"),
       HttpMethod.POST, HttpEntity("{\"prompt\":\"improve\"}", jsonHeaders), String::class.java
     )
-    assertThat(copilot.statusCode.value).isEqualTo(200)
+    assertThat(copilot.statusCode.value()).isEqualTo(200)
     assertThat(copilot.body).contains("Sharpen the summary")
 
     // 7. Export PDF and DOCX.
@@ -229,14 +229,14 @@ class ResumeBuilderJourneyIT {
       url("/resume-builder/documents/$documentId/export?format=pdf"),
       HttpMethod.POST, HttpEntity<String>(authHeaders(USER_ID)), ByteArray::class.java
     )
-    assertThat(pdfExport.statusCode.value).isEqualTo(200)
+    assertThat(pdfExport.statusCode.value()).isEqualTo(200)
     assertThat(pdfExport.headers.contentType).isEqualTo(MediaType.APPLICATION_PDF)
     assertThat(String(pdfExport.body, 0, 5, StandardCharsets.US_ASCII)).isEqualTo("%PDF-")
     val docxExport: ResponseEntity<ByteArray> = rest.exchange(
       url("/resume-builder/documents/$documentId/export?format=docx"),
       HttpMethod.POST, HttpEntity<String>(authHeaders(USER_ID)), ByteArray::class.java
     )
-    assertThat(docxExport.statusCode.value).isEqualTo(200)
+    assertThat(docxExport.statusCode.value()).isEqualTo(200)
     assertThat(String(docxExport.body, 0, 2, StandardCharsets.US_ASCII)).isEqualTo("PK")
 
     // 8. Save to profile returns the stubbed monolith resume id.
@@ -245,7 +245,7 @@ class ResumeBuilderJourneyIT {
       HttpMethod.POST, HttpEntity("{\"label\":\"Android Developer\"}", jsonHeaders),
       String::class.java
     )
-    assertThat(saved.statusCode.value).isEqualTo(200)
+    assertThat(saved.statusCode.value()).isEqualTo(200)
     assertThat(mapper.readTree(saved.body).path("resumeId").asText())
       .isEqualTo(STUB_RESUME_ID.toString())
 
@@ -254,6 +254,6 @@ class ResumeBuilderJourneyIT {
       url("/resume-builder/templates"),
       HttpMethod.GET, HttpEntity<String>(HttpHeaders()), String::class.java
     )
-    assertThat(noAuth.statusCode.value).isEqualTo(401)
+    assertThat(noAuth.statusCode.value()).isEqualTo(401)
   }
 }

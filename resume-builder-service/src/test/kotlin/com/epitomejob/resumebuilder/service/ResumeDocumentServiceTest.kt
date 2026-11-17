@@ -105,9 +105,8 @@ class ResumeDocumentServiceTest {
   @Test
   fun createWithoutTemplateIdIs400WithNoStubs() {
     assertThatThrownBy { service.create(CreateDocumentRequest("x", null, null)) }
-      .isInstanceOf(ResponseStatusException::class.java)
-      .satisfies { ex ->
-        assertThat((ex as ResponseStatusException).statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+      .isInstanceOfSatisfying(ResponseStatusException::class.java) { ex ->
+        assertThat(ex.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
       }
   }
 
@@ -133,9 +132,8 @@ class ResumeDocumentServiceTest {
   fun getMissingDocumentIs404() {
     Mockito.`when`(documents.findByIdAndUserId(DOC_ID, USER_ID)).thenReturn(Optional.empty())
     assertThatThrownBy { service.get(DOC_ID) }
-      .isInstanceOf(ResponseStatusException::class.java)
-      .satisfies { ex ->
-        assertThat((ex as ResponseStatusException).statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+      .isInstanceOfSatisfying(ResponseStatusException::class.java) { ex ->
+        assertThat(ex.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
       }
   }
 
@@ -162,9 +160,8 @@ class ResumeDocumentServiceTest {
     assertThatThrownBy {
       service.update(DOC_ID, UpdateDocumentRequest("x", null, null))
     }
-      .isInstanceOf(ResponseStatusException::class.java)
-      .satisfies { ex ->
-        assertThat((ex as ResponseStatusException).statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+      .isInstanceOfSatisfying(ResponseStatusException::class.java) { ex ->
+        assertThat(ex.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
       }
   }
 }

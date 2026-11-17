@@ -65,8 +65,8 @@ class ResumeBuilderControllerTest {
     private val USER_ID: UUID = UUID.randomUUID()
     private val DOC_ID: UUID = UUID.randomUUID()
     private const val STATE_JSON: String =
-      "{\"contact\":{\"fullName\":\"Ada Lovelace\"},\"summary\":\"Pioneer\","
-        + "\"experience\":[],\"education\":[],\"skills\":[],\"rawText\":\"\"}"
+      "{\"contact\":{\"fullName\":\"Ada Lovelace\"},\"summary\":\"Pioneer\"," +
+        "\"experience\":[],\"education\":[],\"skills\":[],\"rawText\":\"\"}"
   }
 
   @Autowired

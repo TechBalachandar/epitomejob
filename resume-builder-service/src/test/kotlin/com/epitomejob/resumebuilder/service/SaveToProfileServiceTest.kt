@@ -38,9 +38,9 @@ class SaveToProfileServiceTest {
       stub.createContext("/resumes") { exchange ->
         val body = String(exchange.requestBody.readAllBytes(), StandardCharsets.UTF_8)
         var status = 201
-        var response = "{\"id\":\"" + RESUME_ID + "\",\"fileName\":\"ada-resume.pdf\","
-          + "\"fileType\":\"pdf\",\"fileSize\":123,\"status\":\"READY\","
-          + "\"createdAt\":\"2026-11-14T00:00:00Z\",\"label\":\"Android Developer\"}"
+        var response = "{\"id\":\"" + RESUME_ID + "\",\"fileName\":\"ada-resume.pdf\"," +
+          "\"fileType\":\"pdf\",\"fileSize\":123,\"status\":\"READY\"," +
+          "\"createdAt\":\"2026-11-14T00:00:00Z\",\"label\":\"Android Developer\"}"
         if (body.contains("bad-label")) {
           status = 400
           response = "{\"code\":\"BAD_REQUEST\",\"message\":\"Phase 0 accepts PDF only (DOCX comes in Phase 3)\"}"
@@ -72,8 +72,8 @@ class SaveToProfileServiceTest {
   private fun doc(): ResumeDocument {
     return ResumeDocument(
       UUID.randomUUID(), "Ada Resume", "modern",
-      "{\"contact\":{\"fullName\":\"Ada Lovelace\"},\"summary\":\"\",\"experience\":[],"
-        + "\"education\":[],\"skills\":[],\"rawText\":\"\"}"
+      "{\"contact\":{\"fullName\":\"Ada Lovelace\"},\"summary\":\"\",\"experience\":[]," +
+        "\"education\":[],\"skills\":[],\"rawText\":\"\"}"
     )
   }
 
@@ -95,9 +95,8 @@ class SaveToProfileServiceTest {
       service("http://localhost:$stubPort")
         .saveToProfile(doc(), state(), "bad-label", "Bearer token")
     }
-      .isInstanceOf(ResponseStatusException::class.java)
-      .satisfies { ex ->
-        assertThat((ex as ResponseStatusException).statusCode.value).isEqualTo(400)
+      .isInstanceOfSatisfying(ResponseStatusException::class.java) { ex ->
+        assertThat(ex.statusCode.value()).isEqualTo(400)
       }
   }
 
@@ -107,9 +106,8 @@ class SaveToProfileServiceTest {
       service("http://localhost:$stubPort")
         .saveToProfile(doc(), state(), "  ", "Bearer token")
     }
-      .isInstanceOf(ResponseStatusException::class.java)
-      .satisfies { ex ->
-        assertThat((ex as ResponseStatusException).statusCode.value).isEqualTo(400)
+      .isInstanceOfSatisfying(ResponseStatusException::class.java) { ex ->
+        assertThat(ex.statusCode.value()).isEqualTo(400)
       }
   }
 

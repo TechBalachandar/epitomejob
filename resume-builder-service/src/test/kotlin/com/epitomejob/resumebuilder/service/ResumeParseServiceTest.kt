@@ -58,9 +58,8 @@ class ResumeParseServiceTest {
       "application/pdf", ByteArray(0)
     )
     assertThatThrownBy { service.parse(file) }
-      .isInstanceOf(ResponseStatusException::class.java)
-      .satisfies { ex ->
-        assertThat((ex as ResponseStatusException).statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+      .isInstanceOfSatisfying(ResponseStatusException::class.java) { ex ->
+        assertThat(ex.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
       }
   }
 
@@ -71,9 +70,8 @@ class ResumeParseServiceTest {
       "text/plain", "hello".toByteArray()
     )
     assertThatThrownBy { service.parse(file) }
-      .isInstanceOf(ResponseStatusException::class.java)
-      .satisfies { ex ->
-        assertThat((ex as ResponseStatusException).statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+      .isInstanceOfSatisfying(ResponseStatusException::class.java) { ex ->
+        assertThat(ex.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
       }
   }
 
@@ -84,9 +82,8 @@ class ResumeParseServiceTest {
       "application/pdf", "not a pdf at all".toByteArray()
     )
     assertThatThrownBy { service.parse(file) }
-      .isInstanceOf(ResponseStatusException::class.java)
-      .satisfies { ex ->
-        assertThat((ex as ResponseStatusException).statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+      .isInstanceOfSatisfying(ResponseStatusException::class.java) { ex ->
+        assertThat(ex.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
       }
   }
 }
