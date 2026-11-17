@@ -100,4 +100,25 @@ describe("ApprovalCard", () => {
     expect(screen.getByRole("button", { name: /approve/i })).toBeEnabled();
     expect(screen.getByRole("button", { name: /reject/i })).toBeEnabled();
   });
+
+  it("expired card shows no decision buttons, only the expired note", () => {
+    const expired = approval({
+      expiresAt: new Date(Date.now() - 3_600_000).toISOString(),
+    });
+    const onApprove = vi.fn();
+    const onReject = vi.fn();
+    render(
+      <ApprovalCard approval={expired} onApprove={onApprove} onReject={onReject} />,
+    );
+    expect(screen.getByText("Expired")).toBeInTheDocument();
+    expect(
+      screen.getByText(/no longer be decided/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /approve/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /reject/i }),
+    ).not.toBeInTheDocument();
+  });
 });
