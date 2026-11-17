@@ -140,4 +140,101 @@ class ResumeStateParserTest {
     assertThat(state.path("skills")).isEmpty()
     assertThat(state.path("rawText").asText()).isEmpty()
   }
+
+  @Test
+  fun allHeadingVariantsAreRecognised() {
+    // Every heading variant in Section.headingOf must map to its section.
+    // A heading alone is not enough for EXPERIENCE (needs a job header),
+    // EDUCATION (needs a comma line) or SKILLS (needs a list line), so
+    // each variant is followed by a marker line for its section.
+    val summaryVariants = listOf("SUMMARY", "PROFILE", "OBJECTIVE", "ABOUT",
+        "EXECUTIVE SUMMARY", "PROFESSIONAL SUMMARY", "CAREER SUMMARY",
+        "PROFESSIONAL PROFILE", "CAREER PROFILE",
+        "PROFESSIONAL OBJECTIVE", "CAREER OBJECTIVE")
+    for (heading in summaryVariants) {
+      val state = parser.parse("Ada Lovelace\nada@example.com\n$heading\nSeasoned engineer here.\n")
+      assertThat(state.path("summary").asText()).contains("Seasoned engineer")
+    }
+    val experienceVariants = listOf("EXPERIENCE", "WORK EXPERIENCE", "WORK HISTORY",
+        "EMPLOYMENT", "PROFESSIONAL EXPERIENCE", "EMPLOYMENT HISTORY")
+    for (heading in experienceVariants) {
+      val state = parser.parse(
+          "Ada Lovelace\nada@example.com\n$heading\nEngineer at Acme Jan 2020 – Present\n• Did things\n")
+      assertThat(state.path("experience")).hasSize(1)
+      assertThat(state.path("experience").get(0).path("title").asText()).isEqualTo("Engineer")
+    }
+    val educationVariants = listOf("EDUCATION", "EDUCATION & CERTIFICATIONS",
+        "EDUCATION AND CERTIFICATIONS")
+    for (heading in educationVariants) {
+      val state = parser.parse(
+          "Ada Lovelace\nada@example.com\n$heading\nBSc Maths, University, 2015\n")
+      assertThat(state.path("education")).hasSize(1)
+    }
+    val skillsVariants = listOf("SKILLS", "TECHNICAL SKILLS", "CORE SKILLS",
+        "SKILLS & TECHNOLOGIES")
+    for (heading in skillsVariants) {
+      val state = parser.parse("Ada Lovelace\nada@example.com\n$heading\nJava, Python\n")
+      assertThat(state.path("skills").toString()).contains("Java")
+    }
+    // Colon suffix and mixed case are normalised before matching.
+    val colon = parser.parse("Ada Lovelace\nada@example.com\nExperience:\nEngineer at Acme Jan 2020 – Present\n")
+    assertThat(colon.path("experience")).hasSize(1)
+    val lower = parser.parse("Ada Lovelace\nada@example.com\nexperience\nEngineer at Acme Jan 2020 – Present\n")
+    assertThat(lower.path("experience")).hasSize(1)
+    // A line that is not a heading maps to no section.
+    val plain = parser.parse("Ada Lovelace\nada@example.com\nJust a regular line\nMore text\n")
+    assertThat(plain.path("summary").asText()).isEmpty()
+    assertThat(plain.path("experience")).isEmpty()
+  }
+
+  @Test
+  fun contactParsingEdgeCases() {
+    // A name with digits and a lowercase name are not names; a line with
+    // a comma and no year is a location; scanning stops after 8 lines.
+    val text = """
+        Ada Lovelace
+        ada@example.com
+        123 Main Street
+        just some words here
+        London, UK
+        SUMMARY
+        Hello.
+        """.trimIndent()
+    val state = parser.parse(text)
+    assertThat(state.path("contact").path("fullName").asText()).isEqualTo("Ada Lovelace")
+    assertThat(state.path("contact").path("location").asText()).isEqualTo("London, UK")
+    // More than 8 lines before any heading: scanning stops, later lines ignored.
+    val manyLines = buildString {
+      append("Ada Lovelace\n")
+      for (i in 1..10) append("Filler line number $i\n")
+      append("ada@example.com\n")
+    }
+    val late = parser.parse(manyLines)
+    assertThat(late.path("contact").path("email").asText()).isEmpty()
+  }
+
+  @Test
+  fun experienceContinuationLinesAndBulletBeforeAnyJob() {
+    // A bullet before any job header is dropped; a non-bullet line under a
+    // job is kept as a bullet; a job header via " | " and via " — " both work.
+    val text = """
+        Ada Lovelace
+        ada@example.com
+        EXPERIENCE
+        • Orphan bullet with no job yet
+        Senior Engineer | Acme Corp | Jan 2020 – Present
+        A continuation line under the job
+        • A real bullet
+        Lead Engineer — Beta Ltd Jan 2021 – Present
+        • Another bullet
+        """.trimIndent()
+    val state = parser.parse(text)
+    assertThat(state.path("experience")).hasSize(2)
+    val first = state.path("experience").get(0)
+    assertThat(first.path("bullets").toString())
+        .contains("A continuation line under the job", "A real bullet")
+    assertThat(first.path("bullets").toString()).doesNotContain("Orphan bullet")
+    assertThat(state.path("experience").get(1).path("title").asText())
+      .isEqualTo("Lead Engineer")
+  }
 }
