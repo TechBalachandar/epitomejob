@@ -88,7 +88,7 @@ class MatchingServiceTest {
   private fun stubCandidate(p: Profile?, r: Resume?) {
     Mockito.`when`(profiles.findByUserId(USER_ID)).thenReturn(Optional.ofNullable(p))
     Mockito.`when`(resumes.findByUserIdOrderByCreatedAtDesc(USER_ID))
-      .thenReturn(if (r == null) mutableListOf<Resume>() else mutableListOf(r))
+      .thenReturn(if (r == null) emptyList() else listOf(r))
   }
 
   @Test
@@ -331,7 +331,7 @@ class MatchingServiceTest {
     val older = readyResume("Java Spring Boot developer.")
     Mockito.`when`(profiles.findByUserId(USER_ID)).thenReturn(Optional.of(p))
     Mockito.`when`(resumes.findByUserIdOrderByCreatedAtDesc(USER_ID))
-      .thenReturn(mutableListOf(latest, older))
+      .thenReturn(listOf(latest, older))
     Mockito.`when`(jobs.findAll()).thenReturn(listOf(javaJob, androidJob))
 
     val matches = service().matchesForMe(null)

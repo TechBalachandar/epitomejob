@@ -172,7 +172,7 @@ class AuthServiceTest {
     Mockito.`when`(refreshTokens.findByTokenHash(HashUtil.sha256("old")))
       .thenReturn(Optional.of(revoked))
     Mockito.`when`(jwt.extractUserId("old")).thenReturn(USER_ID)
-    Mockito.`when`(refreshTokens.findByUserIdAndRevokedFalse(USER_ID)).thenReturn(mutableListOf(live))
+    Mockito.`when`(refreshTokens.findByUserIdAndRevokedFalse(USER_ID)).thenReturn(listOf(live))
 
     val ex = assertThrows(ResponseStatusException::class.java) { service().refresh("old") }
 

@@ -101,7 +101,7 @@ class ResumeControllerTest {
     authenticate()
     val labelled = resume()
     labelled.label = "Android Developer"
-    Mockito.`when`(service.listMine()).thenReturn(mutableListOf(labelled))
+    Mockito.`when`(service.listMine()).thenReturn(listOf(labelled))
 
     mockMvc.perform(get("/resumes/me").header("Authorization", "Bearer test-token"))
       .andExpect(status().isOk())
@@ -174,7 +174,7 @@ class ResumeControllerTest {
   @Test
   fun listMineReturnsResumes() {
     authenticate()
-    Mockito.`when`(service.listMine()).thenReturn(mutableListOf(resume()))
+    Mockito.`when`(service.listMine()).thenReturn(listOf(resume()))
 
     mockMvc.perform(get("/resumes/me").header("Authorization", "Bearer test-token"))
       .andExpect(status().isOk())

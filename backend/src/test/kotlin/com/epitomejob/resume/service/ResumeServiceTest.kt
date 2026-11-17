@@ -242,7 +242,7 @@ class ResumeServiceTest {
   fun listMineReturnsNewestFirst() {
     authenticate()
     val resume = Resume(USER_ID, "u1/f.pdf", "resume.pdf", "pdf", 100)
-    Mockito.`when`(resumes.findByUserIdOrderByCreatedAtDesc(USER_ID)).thenReturn(mutableListOf(resume))
+    Mockito.`when`(resumes.findByUserIdOrderByCreatedAtDesc(USER_ID)).thenReturn(listOf(resume))
 
     assertEquals(listOf(resume), service().listMine())
   }
@@ -256,7 +256,7 @@ class ResumeServiceTest {
   fun listMineScopesQueryToAuthenticatedUser() {
     authenticate()
     val mine = Resume(USER_ID, "u1/f.pdf", "resume.pdf", "pdf", 100)
-    Mockito.`when`(resumes.findByUserIdOrderByCreatedAtDesc(USER_ID)).thenReturn(mutableListOf(mine))
+    Mockito.`when`(resumes.findByUserIdOrderByCreatedAtDesc(USER_ID)).thenReturn(listOf(mine))
 
     val result = service().listMine()
 
