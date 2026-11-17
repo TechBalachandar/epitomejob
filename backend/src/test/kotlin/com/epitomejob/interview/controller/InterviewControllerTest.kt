@@ -2,18 +2,20 @@ package com.epitomejob.interview.controller
 
 import com.epitomejob.common.security.SecurityConfig
 import com.epitomejob.identity.service.JwtService
+import com.epitomejob.identity.model.Role
+import com.epitomejob.identity.model.User
 import com.epitomejob.interview.dto.AnswerDto
 import com.epitomejob.interview.dto.QuestionDto
 import com.epitomejob.interview.dto.SessionDto
 import com.epitomejob.interview.service.InterviewService
-import io.jsonwebtoken.Claims
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
-import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
+import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -27,8 +29,19 @@ import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.util.UUID
 
+
+@TestConfiguration
+class RealJwtTestConfig {
+  @Bean
+  fun jwtService(): JwtService = JwtService(
+    "test-secret-that-is-at-least-32-chars-long!!",
+    3600000L,
+    7200000L
+  )
+}
+
 @WebMvcTest(InterviewController::class)
-@Import(SecurityConfig::class)
+@Import(SecurityConfig::class, RealJwtTestConfig::class)
 class InterviewControllerTest {
 
   companion object {
@@ -44,14 +57,16 @@ class InterviewControllerTest {
   @MockitoBean
   private lateinit var service: InterviewService
 
-  @MockitoBean
-  private lateinit var jwt: JwtService
+  @Autowired
+  private lateinit var jwtService: JwtService
+
+  private lateinit var authToken: String
 
   private fun authenticate() {
-    val claims = mock<Claims>()
-    whenever(claims.subject).thenReturn(USER_ID.toString())
-    whenever(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
-    whenever(jwt.parse("test-token")).thenReturn(claims)
+    val user = User("test@example.com", null, "Test User")
+    user.id = USER_ID
+    user.role = Role.USER
+    authToken = jwtService.generateAccess(user)
   }
 
   private fun sessionDto(): SessionDto {
@@ -72,7 +87,7 @@ class InterviewControllerTest {
 
     mockMvc.perform(
       get("/interviews/questions?jobId=$JOB_ID")
-        .header("Authorization", "Bearer <redacted>")
+        .header("Authorization", "Bearer $authToken")
     )
       .andExpect(status().isOk())
       .andExpect(jsonPath("$[0].category").value("Technical"))
@@ -84,7 +99,7 @@ class InterviewControllerTest {
 
     mockMvc.perform(
       get("/interviews/questions")
-        .header("Authorization", "Bearer <redacted>")
+        .header("Authorization", "Bearer $authToken")
     )
       .andExpect(status().isBadRequest())
   }
@@ -96,7 +111,7 @@ class InterviewControllerTest {
 
     mockMvc.perform(
       post("/interviews/sessions")
-        .header("Authorization", "Bearer <redacted>")
+        .header("Authorization", "Bearer $authToken")
         .contentType(MediaType.APPLICATION_JSON)
         .content("{\"jobId\":\"$JOB_ID\"}")
     )
@@ -117,7 +132,7 @@ class InterviewControllerTest {
 
     mockMvc.perform(
       post("/interviews/sessions/$SESSION_ID/answers")
-        .header("Authorization", "Bearer <redacted>")
+        .header("Authorization", "Bearer $authToken")
         .contentType(MediaType.APPLICATION_JSON)
         .content("{\"questionId\":\"$QUESTION_ID\",\"answerText\":\"My answer.\"}")
     )
@@ -132,7 +147,7 @@ class InterviewControllerTest {
 
     mockMvc.perform(
       post("/interviews/sessions/$SESSION_ID/answers")
-        .header("Authorization", "Bearer <redacted>")
+        .header("Authorization", "Bearer $authToken")
         .contentType(MediaType.APPLICATION_JSON)
         .content("{\"questionId\":\"$QUESTION_ID\",\"answerText\":\"  \"}")
     )
@@ -146,7 +161,7 @@ class InterviewControllerTest {
 
     mockMvc.perform(
       get("/interviews/sessions/$SESSION_ID")
-        .header("Authorization", "Bearer <redacted>")
+        .header("Authorization", "Bearer $authToken")
     )
       .andExpect(status().isOk())
       .andExpect(jsonPath("$.jobTitle").value("Senior Software Engineer, Backend (Java)"))
@@ -160,7 +175,7 @@ class InterviewControllerTest {
 
     mockMvc.perform(
       get("/interviews/sessions/$SESSION_ID")
-        .header("Authorization", "Bearer <redacted>")
+        .header("Authorization", "Bearer $authToken")
     )
       .andExpect(status().isNotFound())
   }
@@ -172,7 +187,7 @@ class InterviewControllerTest {
 
     mockMvc.perform(
       get("/interviews/sessions/me")
-        .header("Authorization", "Bearer <redacted>")
+        .header("Authorization", "Bearer $authToken")
     )
       .andExpect(status().isOk())
       .andExpect(jsonPath("$[0].status").value("IN_PROGRESS"))

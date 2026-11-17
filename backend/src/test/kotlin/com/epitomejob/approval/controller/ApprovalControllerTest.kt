@@ -4,14 +4,16 @@ import com.epitomejob.approval.model.Approval
 import com.epitomejob.approval.service.ApprovalService
 import com.epitomejob.common.security.SecurityConfig
 import com.epitomejob.identity.service.JwtService
-import io.jsonwebtoken.Claims
+import com.epitomejob.identity.model.Role
+import com.epitomejob.identity.model.User
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
-import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
+import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.test.context.bean.override.mockito.MockitoBean
@@ -24,8 +26,19 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.time.Instant
 import java.util.UUID
 
+
+@TestConfiguration
+class RealJwtTestConfig {
+  @Bean
+  fun jwtService(): JwtService = JwtService(
+    "test-secret-that-is-at-least-32-chars-long!!",
+    3600000L,
+    7200000L
+  )
+}
+
 @WebMvcTest(ApprovalController::class, ApprovalSseController::class)
-@Import(SecurityConfig::class)
+@Import(SecurityConfig::class, RealJwtTestConfig::class)
 class ApprovalControllerTest {
 
   companion object {
@@ -39,14 +52,16 @@ class ApprovalControllerTest {
   @MockitoBean
   private lateinit var service: ApprovalService
 
-  @MockitoBean
-  private lateinit var jwt: JwtService
+  @Autowired
+  private lateinit var jwtService: JwtService
+
+  private lateinit var authToken: String
 
   private fun authenticate() {
-    val claims = mock<Claims>()
-    whenever(claims.subject).thenReturn(USER_ID.toString())
-    whenever(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
-    whenever(jwt.parse("test-token")).thenReturn(claims)
+    val user = User("test@example.com", null, "Test User")
+    user.id = USER_ID
+    user.role = Role.USER
+    authToken = jwtService.generateAccess(user)
   }
 
   private fun approval(status: String): Approval {
@@ -65,7 +80,7 @@ class ApprovalControllerTest {
 
     mockMvc.perform(
       post("/approvals")
-        .header("Authorization", "Bearer <redacted>")
+        .header("Authorization", "Bearer $authToken")
         .contentType(MediaType.APPLICATION_JSON)
         .content("""{"action":"CREATE_APPLICATION","payload":"{\"jobId\":\"job-1\"}"}""")
     )
@@ -80,7 +95,7 @@ class ApprovalControllerTest {
 
     mockMvc.perform(
       post("/approvals")
-        .header("Authorization", "Bearer <redacted>")
+        .header("Authorization", "Bearer $authToken")
         .contentType(MediaType.APPLICATION_JSON)
         .content("""{"action":"","payload":"{}"}""")
     )
@@ -94,7 +109,7 @@ class ApprovalControllerTest {
 
     mockMvc.perform(
       post("/approvals/$APPROVAL_ID/approve")
-        .header("Authorization", "Bearer <redacted>")
+        .header("Authorization", "Bearer $authToken")
     )
       .andExpect(status().isOk())
       .andExpect(jsonPath("$.status").value("APPROVED"))
@@ -107,7 +122,7 @@ class ApprovalControllerTest {
 
     mockMvc.perform(
       post("/approvals/$APPROVAL_ID/reject")
-        .header("Authorization", "Bearer <redacted>")
+        .header("Authorization", "Bearer $authToken")
     )
       .andExpect(status().isOk())
       .andExpect(jsonPath("$.status").value("REJECTED"))
@@ -120,7 +135,7 @@ class ApprovalControllerTest {
 
     mockMvc.perform(
       get("/approvals/pending")
-        .header("Authorization", "Bearer <redacted>")
+        .header("Authorization", "Bearer $authToken")
     )
       .andExpect(status().isOk())
       .andExpect(jsonPath("$[0].status").value("PENDING"))
@@ -133,7 +148,7 @@ class ApprovalControllerTest {
 
     val result = mockMvc.perform(
       get("/approvals/stream")
-        .header("Authorization", "Bearer <redacted>")
+        .header("Authorization", "Bearer $authToken")
     )
       .andExpect(status().isOk())
       .andExpect(request().asyncStarted())

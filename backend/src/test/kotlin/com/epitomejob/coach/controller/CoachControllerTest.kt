@@ -5,14 +5,16 @@ import com.epitomejob.coach.service.CoachService
 import com.epitomejob.common.exception.AgentUnavailableException
 import com.epitomejob.common.security.SecurityConfig
 import com.epitomejob.identity.service.JwtService
-import io.jsonwebtoken.Claims
+import com.epitomejob.identity.model.Role
+import com.epitomejob.identity.model.User
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
-import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
+import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -29,8 +31,19 @@ import java.util.UUID
  * real CoachService runs so the user-id resolution is exercised. The real
  * HTTP mapping (passthrough / 401 / 502) is covered in AgentBrainClientTest.
  */
+
+@TestConfiguration
+class RealJwtTestConfig {
+  @Bean
+  fun jwtService(): JwtService = JwtService(
+    "test-secret-that-is-at-least-32-chars-long!!",
+    3600000L,
+    7200000L
+  )
+}
+
 @WebMvcTest(CoachController::class)
-@Import(SecurityConfig::class, CoachService::class)
+@Import(SecurityConfig::class, CoachService::class, RealJwtTestConfig::class)
 class CoachControllerTest {
 
   companion object {
@@ -45,25 +58,27 @@ class CoachControllerTest {
   @MockitoBean
   private lateinit var agentBrain: AgentBrainClient
 
-  @MockitoBean
-  private lateinit var jwt: JwtService
+  @Autowired
+  private lateinit var jwtService: JwtService
+
+  private lateinit var authToken: String
 
   private fun authenticate() {
-    val claims = mock<Claims>()
-    whenever(claims.subject).thenReturn(USER_ID.toString())
-    whenever(claims.get("role", String::class.java)).thenReturn("ROLE_USER")
-    whenever(jwt.parse("test-token")).thenReturn(claims)
+    val user = User("test@example.com", null, "Test User")
+    user.id = USER_ID
+    user.role = Role.USER
+    authToken = jwtService.generateAccess(user)
   }
 
   @Test
   fun chatReturnsAgentBrainResponseVerbatim() {
     authenticate()
-    whenever(agentBrain.chat(eq("find me a job"), eq(USER_ID), eq("Bearer <redacted>")))
+    whenever(agentBrain.chat(eq("find me a job"), eq(USER_ID), eq("Bearer $authToken")))
       .thenReturn(ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(AGENT_BODY))
 
     mockMvc.perform(
       post("/coach/chat")
-        .header("Authorization", "Bearer <redacted>")
+        .header("Authorization", "Bearer $authToken")
         .contentType(MediaType.APPLICATION_JSON)
         .content("{\"message\":\"find me a job\"}")
     )
@@ -84,7 +99,7 @@ class CoachControllerTest {
 
     mockMvc.perform(
       post("/coach/chat")
-        .header("Authorization", "Bearer <redacted>")
+        .header("Authorization", "Bearer $authToken")
         .contentType(MediaType.APPLICATION_JSON)
         .content("{\"message\":\"hi\"}")
     )
@@ -100,7 +115,7 @@ class CoachControllerTest {
 
     mockMvc.perform(
       post("/coach/chat")
-        .header("Authorization", "Bearer <redacted>")
+        .header("Authorization", "Bearer $authToken")
         .contentType(MediaType.APPLICATION_JSON)
         .content("{\"message\":\"hi\"}")
     )
@@ -115,7 +130,7 @@ class CoachControllerTest {
 
     mockMvc.perform(
       post("/coach/chat")
-        .header("Authorization", "Bearer <redacted>")
+        .header("Authorization", "Bearer $authToken")
         .contentType(MediaType.APPLICATION_JSON)
         .content("{\"message\":\"   \"}")
     )
