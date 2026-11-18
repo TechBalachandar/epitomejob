@@ -2,9 +2,16 @@
 // React so they are easy to unit-test.
 import type { MatchSource } from "./types";
 
-/** "$145k – $175k" */
-export function formatSalary(min: number, max: number): string {
+/** "$145k – $175k". Null when the posting states no salary at all —
+ * never a fabricated "$0k – $0k". One-sided: just the stated figure. */
+export function formatSalary(
+  min: number | null,
+  max: number | null,
+): string | null {
   const k = (n: number) => `$${Math.round(n / 1000)}k`;
+  if (min == null && max == null) return null;
+  if (min == null) return k(max as number);
+  if (max == null) return k(min);
   return `${k(min)} – ${k(max)}`;
 }
 

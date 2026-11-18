@@ -4,15 +4,18 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  BadgeCheck,
   Bell,
   BookOpen,
   Briefcase,
   CalendarCheck,
+  Clock,
   CreditCard,
   FileText,
   Inbox,
   LayoutDashboard,
   LogOut,
+  Mail,
   Menu,
   MessagesSquare,
   PenLine,
@@ -27,14 +30,17 @@ import { Button } from "./ui/button";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/clock", label: "Clock", icon: Clock },
   { href: "/profile", label: "Profile", icon: User },
   { href: "/resumes", label: "Resumes", icon: FileText },
   { href: "/resume-builder", label: "Resume Builder", icon: PenLine },
+  { href: "/cover-letter", label: "Cover Letter", icon: Mail },
   { href: "/jobs", label: "Jobs", icon: Briefcase },
   { href: "/matches", label: "Matches", icon: Sparkles },
   { href: "/coach", label: "Coach", icon: MessagesSquare },
   { href: "/approvals", label: "Approvals", icon: Inbox },
   { href: "/interviews", label: "Interviews", icon: CalendarCheck },
+  { href: "/offers", label: "Offers", icon: BadgeCheck },
   { href: "/tracker", label: "Tracker", icon: Bell },
   { href: "/plans", label: "Plans", icon: CreditCard },
   { href: "/learning", label: "Learning", icon: BookOpen },

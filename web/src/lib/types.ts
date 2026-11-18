@@ -101,8 +101,10 @@ export interface Job {
   company: string;
   location: string;
   workType: WorkType;
-  salaryMin: number;
-  salaryMax: number;
+  /** Nullable: the backend JobDto declares salaryMin/Max as Int?
+   * (a posting with no listed salary returns null). */
+  salaryMin: number | null;
+  salaryMax: number | null;
   currency: string;
   sponsorsH1b: boolean;
   skills: string[];

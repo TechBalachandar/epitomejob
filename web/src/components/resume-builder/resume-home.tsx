@@ -1,19 +1,22 @@
-// Resume Builder — home / resume list. Teal-style landing: large action
-// cards (New Resume, Start from job description, Start from template)
-// with soft pastel icon chips, plus a Recent Resumes section with search
-// and sort. Every card maps to a real action — there is no cover-letter
-// card, because no cover-letter editor exists (it is left out rather
-// than faked). Opening a resume loads it in the editor; "Match a job"
-// opens it straight into the Job Matcher tab.
+// Resume Builder — home / resume list. Large action
+// cards (New Resume, Start from job description, Start from template,
+// New Cover Letter) with soft pastel icon chips, plus a Recent Resumes
+// section with search and sort. Every card maps to a real action.
+// Opening a resume loads it in the editor; "Match a job" opens it
+// straight into the Job Matcher tab; "New Cover Letter" opens the
+// cover-letter generator, which drafts from a builder resume + job
+// description via Co-Pilot.
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowUpDown,
   Briefcase,
   FilePlus2,
   LayoutTemplate,
   ListFilter,
+  Mail,
   Search,
   Sparkles,
   UploadCloud,
@@ -41,7 +44,7 @@ function formatEditedAt(value: string | null): string {
 }
 
 const ACTION_CARDS: {
-  id: "new" | "job-description" | "template";
+  id: "new" | "job-description" | "template" | "cover-letter";
   title: string;
   description: string;
   chip: string;
@@ -68,6 +71,13 @@ const ACTION_CARDS: {
     chip: "bg-rose-100 text-rose-700",
     icon: <LayoutTemplate className="h-6 w-6" aria-hidden />,
   },
+  {
+    id: "cover-letter",
+    title: "New Cover Letter",
+    description: "Draft a tailored cover letter from a resume and a job description.",
+    chip: "bg-amber-100 text-amber-700",
+    icon: <Mail className="h-6 w-6" aria-hidden />,
+  },
 ];
 
 export function ResumeHome({
@@ -93,6 +103,7 @@ export function ResumeHome({
 }) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<BuilderDocumentsSort>("recent");
+  const router = useRouter();
   const visible = useMemo(
     () => sortBuilderDocuments(filterBuilderDocuments(documents, query), sort),
     [documents, query, sort],
@@ -101,6 +112,7 @@ export function ResumeHome({
   const handleAction = (id: (typeof ACTION_CARDS)[number]["id"]) => {
     if (id === "new") onNew();
     else if (id === "job-description") onFromJobDescription();
+    else if (id === "cover-letter") router.push("/cover-letter");
     else onFromTemplate();
   };
 
@@ -116,7 +128,7 @@ export function ResumeHome({
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {ACTION_CARDS.map((card) => (
           <button
             key={card.id}

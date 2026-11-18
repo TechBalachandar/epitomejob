@@ -379,6 +379,9 @@ export default function ProfilePage() {
                         dashboard starts from this date. Clearing a set date
                         isn&apos;t supported yet — leave it as is to keep it.
                       </p>
+                      <Link href="/clock" className="text-xs text-indigo-700 hover:underline">
+                        See your 60-day plan →
+                      </Link>
                     </div>
                   </div>
                   {saveError && (

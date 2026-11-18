@@ -284,6 +284,12 @@ function DashboardPageContent() {
                 </Link>
               </>
             )}
+            <Link
+              href="/clock"
+              className={cn(buttonVariants({ variant: "outline" }), "w-fit")}
+            >
+              View your 60-day plan <ArrowRight className="h-4 w-4" aria-hidden />
+            </Link>
           </CardContent>
         </Card>
       </div>
