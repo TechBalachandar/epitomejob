@@ -18,24 +18,34 @@ import {
 import { useAuthStore } from "@/lib/auth-store";
 import {
   BUILTIN_TEMPLATES,
+  DEFAULT_DESIGN,
+  analyzeResume,
   applyCopilotOption,
+  applyDesignOverrides,
   copilotContextFor,
+  designToCss,
   emptyBuilderState,
   filenameFromContentDisposition,
   hasPlaceholders,
   highlightPlaceholders,
+  keywordsFromJobDescription,
   normalizeBuilderDocument,
   normalizeBuilderTemplates,
   normalizeCopilotResponse,
   renderTemplateHtml,
   sampleBuilderState,
   splitPlaceholders,
+  templateLayoutOf,
+  templateStyleOf,
   triggerBlobDownload,
   updateExperienceItem,
   validateBuilderFile,
 } from "@/lib/resume-builder";
 import type { BuilderTemplate, ResumeBuilderState } from "@/lib/types";
 import { TemplateGallery } from "@/components/resume-builder/template-gallery";
+import { TemplateLibraryModal } from "@/components/resume-builder/template-library-modal";
+import { DesignerPanel } from "@/components/resume-builder/designer-panel";
+import { AnalyzerPanel } from "@/components/resume-builder/analyzer-panel";
 import ResumeBuilderPage from "@/app/resume-builder/page";
 
 // The page reads ?documentId= via next/navigation; control it per test.
@@ -449,7 +459,10 @@ describe("TemplateGallery", () => {
     for (const frame of frames) {
       expect(frame.getAttribute("srcDoc")).toContain("Alex Morgan");
     }
-    expect(screen.getAllByRole("button", { name: /Use / })).toHaveLength(3);
+    // Select-only grid: one select button per template, no commit here.
+    expect(
+      screen.getAllByRole("button", { name: /Select .* template/ }),
+    ).toHaveLength(3);
   });
 
   it("marks the selected template and calls onSelect", async () => {
@@ -464,7 +477,7 @@ describe("TemplateGallery", () => {
       />,
     );
     expect(screen.getByText("Selected")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Use Minimal" }));
+    await user.click(screen.getByRole("button", { name: "Select Minimal template" }));
     expect(onSelect).toHaveBeenCalledWith(
       expect.objectContaining({ id: "minimal" }),
     );
@@ -522,10 +535,12 @@ describe("ResumeBuilderPage flow", () => {
     await waitFor(() =>
       expect(screen.getByText("Choose a template")).toBeInTheDocument(),
     );
-    expect(screen.getByText("Modern")).toBeInTheDocument();
-    expect(screen.getByText("Classic")).toBeInTheDocument();
-    expect(screen.getByText("Minimal")).toBeInTheDocument();
+    // Names appear both as style filters and as gallery cards.
+    expect(screen.getAllByText("Modern").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Classic").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Minimal").length).toBeGreaterThan(0);
 
+    await user.click(screen.getByRole("button", { name: "Select Modern template" }));
     await user.click(screen.getByRole("button", { name: "Use Modern" }));
     await waitFor(() =>
       expect(screen.getByLabelText("Full name")).toBeInTheDocument(),
@@ -541,7 +556,7 @@ describe("ResumeBuilderPage flow", () => {
     await user.type(nameInput, "Alex Morgan");
     const preview = screen.getByTestId("resume-preview") as HTMLIFrameElement;
     expect(preview.getAttribute("srcDoc")).toContain("Alex Morgan");
-    expect(screen.getByRole("button", { name: "Download PDF" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export PDF" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Download DOCX" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save to profile" })).toBeInTheDocument();
   });
@@ -558,6 +573,9 @@ describe("ResumeBuilderPage flow", () => {
     await waitFor(() =>
       expect(screen.getByText("Choose a template")).toBeInTheDocument(),
     );
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Select Classic template" }));
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "Use Classic" }));
@@ -597,6 +615,7 @@ describe("ResumeBuilderPage flow", () => {
     await waitFor(() =>
       expect(screen.getByText("Choose a template")).toBeInTheDocument(),
     );
+    await user.click(screen.getByRole("button", { name: "Select Modern template" }));
     await user.click(screen.getByRole("button", { name: "Use Modern" }));
     await waitFor(() =>
       expect(screen.getByLabelText("Summary")).toBeInTheDocument(),
@@ -634,6 +653,7 @@ describe("ResumeBuilderPage flow", () => {
     await waitFor(() =>
       expect(screen.getByText("Choose a template")).toBeInTheDocument(),
     );
+    await user.click(screen.getByRole("button", { name: "Select Modern template" }));
     await user.click(screen.getByRole("button", { name: "Use Modern" }));
     await waitFor(() =>
       expect(screen.getByLabelText("Summary")).toBeInTheDocument(),
@@ -665,12 +685,13 @@ describe("ResumeBuilderPage flow", () => {
     await waitFor(() =>
       expect(screen.getByText("Choose a template")).toBeInTheDocument(),
     );
+    await user.click(screen.getByRole("button", { name: "Select Modern template" }));
     await user.click(screen.getByRole("button", { name: "Use Modern" }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Download PDF" })).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: "Export PDF" })).toBeInTheDocument(),
     );
 
-    await user.click(screen.getByRole("button", { name: "Download PDF" }));
+    await user.click(screen.getByRole("button", { name: "Export PDF" }));
     await waitFor(() => expect(createSpy).toHaveBeenCalled());
 
     const labelInput = screen.getByLabelText("Save to profile as") as HTMLInputElement;
@@ -694,6 +715,7 @@ describe("ResumeBuilderPage flow", () => {
     await waitFor(() =>
       expect(screen.getByText("Choose a template")).toBeInTheDocument(),
     );
+    await user.click(screen.getByRole("button", { name: "Select Minimal template" }));
     await user.click(screen.getByRole("button", { name: "Use Minimal" }));
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Add experience" })).toBeInTheDocument(),
@@ -705,5 +727,235 @@ describe("ResumeBuilderPage flow", () => {
     expect(preview.getAttribute("srcDoc")).toContain("Staff Engineer");
     await user.click(screen.getByRole("button", { name: "Remove experience 1" }));
     expect(screen.queryByLabelText("Job title")).not.toBeInTheDocument();
+  });
+});
+
+describe("design settings (Designer mode)", () => {
+  it("designToCss overrides font, line-height, accent, alignment and margins", () => {
+    const css = designToCss({
+      ...DEFAULT_DESIGN,
+      font: "serif",
+      lineHeight: 1.8,
+      accent: "#0f766e",
+      headerAlign: "center",
+      dateAlign: "inline",
+      margins: { top: 48, right: 48, bottom: 48, left: 48 },
+    });
+    expect(css).toContain("Georgia");
+    expect(css).toContain("line-height: 1.8");
+    expect(css).toContain("#0f766e");
+    expect(css).toContain("text-align: center");
+    expect(css).toContain("padding: 48px 48px 48px 48px");
+    expect(css).toContain("display: block");
+  });
+
+  it("applyDesignOverrides injects one override style block", () => {
+    const html = renderTemplateHtml(BUILTIN_TEMPLATES[0], sampleBuilderState(), {
+      design: { ...DEFAULT_DESIGN, accent: "#0f766e", lineHeight: 1.75 },
+    });
+    expect(html).toContain("data-design");
+    expect(html).toContain("#0f766e");
+    expect(html).toContain("line-height: 1.75");
+    expect(html).toContain("Alex Morgan");
+  });
+
+  it("renderTemplateHtml honours the date separator and hidden sections", () => {
+    const state = sampleBuilderState();
+    const withTo = renderTemplateHtml(BUILTIN_TEMPLATES[0], state, {
+      design: { ...DEFAULT_DESIGN, dateSeparator: " to " },
+    });
+    expect(withTo).toContain("2021 to Present");
+    const hidden = renderTemplateHtml(BUILTIN_TEMPLATES[0], state, {
+      hideSections: ["skills", "education"],
+    });
+    expect(hidden).not.toContain("Java, Spring Boot");
+    expect(hidden).not.toContain("George Mason University");
+    expect(hidden).toContain("Alex Morgan");
+    // Without options the render is unchanged.
+    const plain = renderTemplateHtml(BUILTIN_TEMPLATES[0], state);
+    expect(plain).toContain("2021 – Present");
+    expect(plain).toContain("Java, Spring Boot");
+  });
+
+  it("templateStyleOf / templateLayoutOf derive real filter values", () => {
+    expect(templateStyleOf(BUILTIN_TEMPLATES[0])).toBe("Modern");
+    expect(templateStyleOf(BUILTIN_TEMPLATES[1])).toBe("Classic");
+    expect(templateStyleOf(BUILTIN_TEMPLATES[2])).toBe("Minimal");
+    for (const template of BUILTIN_TEMPLATES) {
+      expect(templateLayoutOf(template)).toBe("Single column");
+    }
+  });
+});
+
+describe("analyzeResume", () => {
+  it("scores a complete resume high and counts measurable bullets", () => {
+    const analysis = analyzeResume(sampleBuilderState());
+    expect(analysis.score).toBeGreaterThanOrEqual(80);
+    const measurable = analysis.checks.find((c) => c.id === "measurable");
+    expect(measurable?.detail).toBe("2 of 2 bullets include a number or metric");
+    expect(analysis.weakest).toBeNull();
+  });
+
+  it("scores an empty resume 0 and names the weakest check", () => {
+    const analysis = analyzeResume(emptyBuilderState());
+    expect(analysis.score).toBe(0);
+    expect(analysis.checks.length).toBeGreaterThan(0);
+    expect(analysis.checks.every((c) => !c.passed)).toBe(true);
+    expect(analysis.weakest?.id).toBe("contact");
+  });
+
+  it("counts keyword coverage from a pasted job description", () => {
+    const jd = "We need a Java engineer with Spring Boot and Kafka experience, plus Azure and PostgreSQL.";
+    const analysis = analyzeResume(sampleBuilderState(), jd);
+    const keywords = analysis.checks.find((c) => c.id === "keywords");
+    expect(keywords).toBeDefined();
+    expect(keywords?.passed).toBe(true);
+    expect(keywords?.detail).toContain("job keywords appear");
+    expect(keywordsFromJobDescription(jd)).toContain("spring");
+  });
+
+  it("omits the keyword check when no job description is pasted", () => {
+    const analysis = analyzeResume(sampleBuilderState());
+    expect(analysis.checks.find((c) => c.id === "keywords")).toBeUndefined();
+  });
+});
+
+describe("DesignerPanel", () => {
+  function renderPanel() {
+    const onDesignChange = vi.fn();
+    const onToggleSection = vi.fn();
+    render(
+      <DesignerPanel
+        design={DEFAULT_DESIGN}
+        onDesignChange={onDesignChange}
+        visibleSections={{
+          contact: true,
+          summary: true,
+          experience: true,
+          education: true,
+          skills: true,
+        }}
+        onToggleSection={onToggleSection}
+        onResetDesign={() => {}}
+      />,
+    );
+    return { onDesignChange, onToggleSection };
+  }
+
+  it("changing the font, line-height and accent calls onDesignChange", async () => {
+    const user = userEvent.setup();
+    const { onDesignChange } = renderPanel();
+    await user.selectOptions(screen.getByLabelText("Font"), "serif");
+    expect(onDesignChange).toHaveBeenCalledWith(
+      expect.objectContaining({ font: "serif" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Accent color Teal" }));
+    expect(onDesignChange).toHaveBeenCalledWith(
+      expect.objectContaining({ accent: "#0f766e" }),
+    );
+    const slider = screen.getByLabelText("Line height") as HTMLInputElement;
+    fireEvent.change(slider, { target: { value: "180" } });
+    expect(onDesignChange).toHaveBeenCalledWith(
+      expect.objectContaining({ lineHeight: 1.8 }),
+    );
+  });
+
+  it("sections tab toggles a section and settings tab steps a margin", async () => {
+    const user = userEvent.setup();
+    const { onDesignChange, onToggleSection } = renderPanel();
+    await user.click(screen.getByRole("tab", { name: "Sections" }));
+    await user.click(screen.getByLabelText("Show Skills section"));
+    expect(onToggleSection).toHaveBeenCalledWith("skills");
+    await user.click(screen.getByRole("tab", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "Increase Top margin" }));
+    expect(onDesignChange).toHaveBeenCalledWith(
+      expect.objectContaining({ margins: expect.objectContaining({ top: 36 }) }),
+    );
+  });
+});
+
+describe("TemplateLibraryModal", () => {
+  function renderModal() {
+    const onSelect = vi.fn();
+    const onUse = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <TemplateLibraryModal
+        templates={TEMPLATES}
+        state={sampleBuilderState()}
+        selectedId={null}
+        onSelect={onSelect}
+        onUse={onUse}
+        onClose={onClose}
+      />,
+    );
+    return { onSelect, onUse, onClose };
+  }
+
+  it("filters by search and style, and the commit is disabled until a template is picked", async () => {
+    const user = userEvent.setup();
+    const { onSelect, onUse } = renderModal();
+    expect(screen.getByRole("button", { name: "Use Template" })).toBeDisabled();
+    await user.type(screen.getByLabelText("Search templates"), "classic");
+    expect(
+      screen.getByRole("button", { name: "Select Classic template" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Select Modern template" }),
+    ).not.toBeInTheDocument();
+    await user.clear(screen.getByLabelText("Search templates"));
+    await user.click(screen.getByRole("button", { name: "Minimal" }));
+    expect(
+      screen.queryByRole("button", { name: "Select Modern template" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Select Minimal template" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Select Minimal template" }));
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "minimal" }));
+    // Commit stays disabled until the parent records the selection.
+    expect(screen.getByRole("button", { name: "Use Template" })).toBeDisabled();
+    expect(onUse).not.toHaveBeenCalled();
+  });
+
+  it("shows the selected template's live preview and commits with its name", async () => {
+    const user = userEvent.setup();
+    const onUse = vi.fn();
+    render(
+      <TemplateLibraryModal
+        templates={TEMPLATES}
+        state={sampleBuilderState()}
+        selectedId="classic"
+        onSelect={() => {}}
+        onUse={onUse}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByText("Preview — Classic")).toBeInTheDocument();
+    const commit = screen.getByRole("button", { name: "Use Classic" });
+    expect(commit).not.toBeDisabled();
+    await user.click(commit);
+    expect(onUse).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("AnalyzerPanel", () => {
+  it("renders the score gauge, countable rows and a tip for the weakest check", () => {
+    const state = emptyBuilderState();
+    render(<AnalyzerPanel state={state} targetJd="" onTargetJdChange={() => {}} />);
+    expect(screen.getByRole("img", { name: /Resume score 0 out of 100/ })).toBeInTheDocument();
+    expect(screen.getByText("Contact details complete")).toBeInTheDocument();
+    expect(screen.getByText("Add your name and email")).toBeInTheDocument();
+    expect(screen.getByText(/Tip — fix this first/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Target job description")).toBeInTheDocument();
+  });
+
+  it("shows the keyword row once a job description is pasted", () => {
+    const jd = "Java Spring Boot Kafka Azure PostgreSQL engineer";
+    render(
+      <AnalyzerPanel state={sampleBuilderState()} targetJd={jd} onTargetJdChange={() => {}} />,
+    );
+    expect(screen.getByText("Job keywords covered")).toBeInTheDocument();
+    expect(screen.getByText(/job keywords appear/)).toBeInTheDocument();
   });
 });

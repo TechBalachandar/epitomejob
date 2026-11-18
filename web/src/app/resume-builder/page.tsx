@@ -1,12 +1,14 @@
-// Resume Builder — /resume-builder. Three steps in one page:
-//   entry → templates → editor.
-// Entry: "I have a resume" (upload PDF/DOC/DOCX → parse → templates with
-// the parsed state) or "Build fresh" (empty state → templates).
-// Templates: live gallery from GET /resume-builder/templates.
-// Editor: editable fields on the left, live preview on the right, one
-// document state object; Co-Pilot per section/block; PDF/DOCX export and
-// Save to profile. The document id lives in the URL (?documentId=) after
-// creation — the W6 ?resumeId= pattern — so refresh keeps working.
+// Resume Builder — /resume-builder. Teal-style editor shell:
+//   entry → template library (modal) → editor.
+// Entry: "I have a resume" (upload PDF/DOC/DOCX → parse → template
+// library with the parsed state) or "Build fresh" (empty state → library).
+// Editor: a top bar (back link, inline-editable title, template chip,
+// Save, Export PDF), mode tabs (Content / Designer / Analyzer), a left
+// control panel and a right live Letter-page preview on a grey canvas
+// that updates instantly from every control. Co-Pilot per section/block;
+// PDF/DOCX export and Save to profile. The document id lives in the URL
+// (?documentId=) after creation — the W6 ?resumeId= pattern — so refresh
+// keeps working.
 "use client";
 
 import Link from "next/link";
@@ -17,6 +19,7 @@ import {
   ArrowLeft,
   Download,
   FilePlus2,
+  LayoutTemplate,
   Plus,
   Save,
   Sparkles,
@@ -35,6 +38,7 @@ import {
 } from "@/lib/api";
 import {
   BUILDER_ACCEPT,
+  DEFAULT_DESIGN,
   addEducationItem,
   addExperienceItem,
   applyCopilotOption,
@@ -49,7 +53,9 @@ import {
   updateExperienceItem,
   validateBuilderFile,
 } from "@/lib/resume-builder";
+import type { DesignSettings } from "@/lib/resume-builder";
 import type {
+  BuilderSection,
   BuilderTemplate,
   CopilotOption,
   CopilotTarget,
@@ -61,11 +67,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { TemplateGallery } from "@/components/resume-builder/template-gallery";
 import { ResumePreview } from "@/components/resume-builder/resume-preview";
 import { CopilotPanel } from "@/components/resume-builder/copilot-panel";
+import { DesignerPanel } from "@/components/resume-builder/designer-panel";
+import { AnalyzerPanel } from "@/components/resume-builder/analyzer-panel";
+import { TemplateLibraryModal } from "@/components/resume-builder/template-library-modal";
+import { cn } from "@/lib/utils";
 
-type Step = "entry" | "templates" | "editor";
+type Step = "entry" | "editor";
+type EditorMode = "content" | "designer" | "analyzer";
 
 function ImproveButton({
   label,
@@ -96,7 +106,7 @@ function SectionCard({
   children: ReactNode;
 }) {
   return (
-    <Card>
+    <Card className="rounded-2xl shadow-sm">
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
           <CardTitle>{title}</CardTitle>
@@ -241,7 +251,7 @@ function ExperienceSection({
         <p className="text-sm text-slate-500">No experience yet — add your first role.</p>
       )}
       {state.experience.map((item, i) => (
-        <div key={item.id} className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3">
+        <div key={item.id} className="flex flex-col gap-3 rounded-xl border border-slate-200 p-3">
           <div className="flex items-center justify-between gap-2">
             <span className="text-sm font-medium text-slate-900">Experience {i + 1}</span>
             <span className="flex items-center gap-2">
@@ -351,7 +361,7 @@ function EducationSection({
         <p className="text-sm text-slate-500">No education yet — add your first entry.</p>
       )}
       {state.education.map((item, i) => (
-        <div key={item.id} className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3">
+        <div key={item.id} className="flex flex-col gap-3 rounded-xl border border-slate-200 p-3">
           <div className="flex items-center justify-between gap-2">
             <span className="text-sm font-medium text-slate-900">Education {i + 1}</span>
             <span className="flex items-center gap-2">
@@ -468,6 +478,12 @@ function SkillsSection({
   );
 }
 
+const MODE_TABS: { id: EditorMode; label: string }[] = [
+  { id: "content", label: "Content" },
+  { id: "designer", label: "Designer" },
+  { id: "analyzer", label: "Analyzer" },
+];
+
 function ResumeBuilderPageContent() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
@@ -501,11 +517,27 @@ function ResumeBuilderPageContent() {
   const [savedResumeId, setSavedResumeId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Editor shell state: mode tab, Designer design, section visibility,
+  // and the Template Library modal.
+  const [mode, setMode] = useState<EditorMode>("content");
+  const [design, setDesign] = useState<DesignSettings>(DEFAULT_DESIGN);
+  const [visibleSections, setVisibleSections] = useState<Record<BuilderSection, boolean>>({
+    contact: true,
+    summary: true,
+    experience: true,
+    education: true,
+    skills: true,
+  });
+  const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
+
   const { data: templates, isLoading: templatesLoading } = useBuilderTemplates();
   const templateList = templates ?? [];
   const selectedTemplate: BuilderTemplate =
     templateList.find((t) => t.id === templateId) ??
     builtinTemplateById(templateId);
+  const hideSections = (Object.keys(visibleSections) as BuilderSection[]).filter(
+    (section) => !visibleSections[section],
+  );
 
   // ?documentId= on load: fetch the document so refresh keeps working —
   // but only when the URL names a document we do not already hold (see
@@ -527,7 +559,11 @@ function ResumeBuilderPageContent() {
         setDocTitle(doc.title ?? "");
         setSaveLabel(doc.title ?? "");
         setLoadedDocId(documentIdParam);
-        setStep(doc.templateId ? "editor" : "templates");
+        if (doc.templateId) {
+          setStep("editor");
+        } else {
+          setShowTemplateLibrary(true);
+        }
       })
       .catch((err) => {
         setError(
@@ -569,7 +605,7 @@ function ResumeBuilderPageContent() {
         setDocTitle(doc.title);
         setSaveLabel(doc.title);
       }
-      setStep("templates");
+      setShowTemplateLibrary(true);
       toast({
         title: "Resume parsed",
         description: "Pick a template to continue editing.",
@@ -591,7 +627,7 @@ function ResumeBuilderPageContent() {
     setSaveLabel("");
     setSavedResumeId(null);
     setError(null);
-    setStep("templates");
+    setShowTemplateLibrary(true);
   }
 
   async function handleSelectTemplate(template: BuilderTemplate) {
@@ -614,6 +650,7 @@ function ResumeBuilderPageContent() {
           setLoadedDocId(doc.id);
         }
       }
+      setShowTemplateLibrary(false);
       setStep("editor");
     } catch (err) {
       // The document still works locally even if the first save fails —
@@ -623,6 +660,7 @@ function ResumeBuilderPageContent() {
           ? err.message
           : "Could not save the document yet — you can keep editing and save from the editor.",
       );
+      setShowTemplateLibrary(false);
       setStep("editor");
     }
   }
@@ -727,28 +765,28 @@ function ResumeBuilderPageContent() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Resume Builder</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Upload your resume to start from what you have, or build fresh from
-          a template — then edit, improve each section with AI, and download
-          it as PDF or DOCX.
-        </p>
-      </div>
-
-      {error && (
-        <p role="alert" className="text-sm text-rose-600">
-          {error}
-        </p>
-      )}
-      {loadingDoc && <p className="text-sm text-slate-500">Loading document…</p>}
-
       {step === "entry" && (
         <>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900">Resume Builder</h1>
+            <p className="mt-2 max-w-2xl text-base text-slate-500">
+              Upload your resume to start from what you have, or build fresh
+              from a template — then edit, design, and check it against the
+              job you want, and download it as PDF or DOCX.
+            </p>
+          </div>
+
+          {error && (
+            <p role="alert" className="text-sm text-rose-600">
+              {error}
+            </p>
+          )}
+          {loadingDoc && <p className="text-sm text-slate-500">Loading document…</p>}
+
           <div className="grid gap-4 sm:grid-cols-2">
-            <Card>
+            <Card className="rounded-2xl shadow-sm">
               <CardHeader>
-                <CardTitle>I have a resume</CardTitle>
+                <CardTitle className="text-lg">I have a resume</CardTitle>
                 <CardDescription>
                   Upload a PDF, DOC or DOCX. We parse it into editable
                   sections — nothing is overwritten until you save.
@@ -765,9 +803,9 @@ function ResumeBuilderPageContent() {
                 </Button>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="rounded-2xl shadow-sm">
               <CardHeader>
-                <CardTitle>Build fresh</CardTitle>
+                <CardTitle className="text-lg">Build fresh</CardTitle>
                 <CardDescription>
                   Start from a blank resume and pick a template. Fill in
                   each section — Co-Pilot can help rewrite them.
@@ -783,7 +821,7 @@ function ResumeBuilderPageContent() {
           </div>
 
           {showUpload && (
-            <Card>
+            <Card className="rounded-2xl shadow-sm">
               <CardHeader>
                 <CardTitle>Upload your resume</CardTitle>
                 <CardDescription>
@@ -793,7 +831,7 @@ function ResumeBuilderPageContent() {
               <CardContent className="flex flex-col gap-3">
                 <div
                   data-testid="builder-dropzone"
-                  className={`flex min-h-32 flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center ${
+                  className={`flex min-h-32 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 text-center ${
                     dragOver ? "border-indigo-500 bg-indigo-50" : "border-slate-300"
                   }`}
                   onDragOver={(e) => {
@@ -833,163 +871,236 @@ function ResumeBuilderPageContent() {
         </>
       )}
 
-      {step === "templates" && (
-        <div className="flex flex-col gap-4">
-          <div>
-            <Button variant="ghost" size="sm" onClick={() => setStep("entry")}>
-              <ArrowLeft className="h-4 w-4" aria-hidden />
-              Back
-            </Button>
+      {step === "editor" && (
+        <div className="flex min-w-0 flex-col gap-4">
+          {/* Top bar: back, inline title, template, save + export. */}
+          <div className="sticky top-0 z-20 -mx-4 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <Link
+                href="/resumes"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900"
+              >
+                <ArrowLeft className="h-4 w-4" aria-hidden />
+                Back to Resumes
+              </Link>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowTemplateLibrary(true)}
+              >
+                <LayoutTemplate className="h-4 w-4" aria-hidden />
+                Change template
+              </Button>
+              <input
+                aria-label="Document title"
+                value={docTitle}
+                placeholder={`${selectedTemplate.name} resume`}
+                onChange={(e) => setDocTitle(e.target.value)}
+                className="min-w-40 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-lg font-bold tracking-tight text-slate-900 hover:border-slate-200 focus:border-indigo-500 focus:outline-none"
+              />
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                Template: {selectedTemplate.name}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={saving}
+                onClick={() => void handleSave()}
+              >
+                <Save className="h-4 w-4" aria-hidden />
+                {saving ? "Saving…" : "Save"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={exporting !== null}
+                onClick={() => void handleExport("docx")}
+              >
+                <Download className="h-4 w-4" aria-hidden />
+                {exporting === "docx" ? "Exporting…" : "Download DOCX"}
+              </Button>
+              <Button
+                size="sm"
+                disabled={exporting !== null}
+                onClick={() => void handleExport("pdf")}
+              >
+                <Download className="h-4 w-4" aria-hidden />
+                {exporting === "pdf" ? "Exporting…" : "Export PDF"}
+              </Button>
+            </div>
+            {/* Mode tabs: Content / Designer / Analyzer. */}
+            <div
+              role="tablist"
+              aria-label="Resume builder mode"
+              className="mt-3 flex gap-1 rounded-lg bg-slate-100 p-1 sm:max-w-md"
+            >
+              {MODE_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === tab.id}
+                  onClick={() => setMode(tab.id)}
+                  className={cn(
+                    "flex-1 rounded-md px-3 py-1.5 text-sm transition-colors",
+                    mode === tab.id
+                      ? "bg-white font-semibold text-slate-900 shadow-sm"
+                      : "text-slate-600 hover:text-slate-900",
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">Choose a template</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Each thumbnail is a live preview of the template with your
-              content — pick one to start editing.
+
+          {error && (
+            <p role="alert" className="text-sm text-rose-600">
+              {error}
             </p>
-          </div>
-          {templatesLoading && <p className="text-sm text-slate-500">Loading templates…</p>}
-          {!templatesLoading && templateList.length === 0 && (
-            <p className="text-sm text-slate-500">No templates available.</p>
           )}
-          <TemplateGallery
-            templates={templateList}
-            state={builderState}
-            selectedId={templateId}
-            onSelect={(t) => void handleSelectTemplate(t)}
-          />
+          {loadingDoc && <p className="text-sm text-slate-500">Loading document…</p>}
+
+          <div className="grid min-w-0 gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
+            {/* Left control panel — switches with the mode tab. */}
+            <div className="flex min-w-0 flex-col gap-4">
+              {mode === "content" && (
+                <>
+                  <Card className="rounded-2xl shadow-sm">
+                    <CardHeader>
+                      <CardTitle>Document</CardTitle>
+                      <CardDescription>
+                        Target the resume at one job, and save it to your
+                        profile when it is ready.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-4">
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="builder-target-jd">
+                          Target job description (optional)
+                        </Label>
+                        <Textarea
+                          id="builder-target-jd"
+                          rows={3}
+                          placeholder="Paste the job description you are targeting — Co-Pilot tailors its suggestions to it."
+                          value={targetJd}
+                          onChange={(e) => setTargetJd(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5 border-t border-slate-100 pt-4">
+                        <Label htmlFor="builder-save-label">Save to profile as</Label>
+                        <div className="flex flex-wrap items-end gap-2">
+                          <Input
+                            id="builder-save-label"
+                            value={saveLabel}
+                            placeholder={`${selectedTemplate.name} resume`}
+                            onChange={(e) => setSaveLabel(e.target.value)}
+                            className="min-w-40 flex-1"
+                          />
+                          <Button
+                            variant="outline"
+                            disabled={savingToProfile}
+                            onClick={() => void handleSaveToProfile()}
+                          >
+                            {savingToProfile ? "Saving…" : "Save to profile"}
+                          </Button>
+                        </div>
+                        {savedResumeId && (
+                          <p className="text-sm text-emerald-700">
+                            Saved as resume {savedResumeId}.{" "}
+                            <Link href="/resumes" className="font-medium underline">
+                              View in Resumes
+                            </Link>
+                          </p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <ContactSection
+                    state={builderState}
+                    onChange={onChange}
+                    onImprove={onImprove}
+                    copilotPanel={copilotTarget?.section === "contact" ? copilotPanel : undefined}
+                  />
+                  <SummarySection
+                    state={builderState}
+                    onChange={onChange}
+                    onImprove={onImprove}
+                    copilotPanel={copilotTarget?.section === "summary" ? copilotPanel : undefined}
+                  />
+                  <ExperienceSection
+                    state={builderState}
+                    onChange={onChange}
+                    onImprove={onImprove}
+                    copilotPanel={copilotTarget?.section === "experience" ? copilotPanel : undefined}
+                    activeIndex={copilotTarget?.section === "experience" ? copilotTarget.index : undefined}
+                  />
+                  <EducationSection
+                    state={builderState}
+                    onChange={onChange}
+                    onImprove={onImprove}
+                    copilotPanel={copilotTarget?.section === "education" ? copilotPanel : undefined}
+                    activeIndex={copilotTarget?.section === "education" ? copilotTarget.index : undefined}
+                  />
+                  <SkillsSection
+                    state={builderState}
+                    onChange={onChange}
+                    onImprove={onImprove}
+                    copilotPanel={copilotTarget?.section === "skills" ? copilotPanel : undefined}
+                  />
+                </>
+              )}
+              {mode === "designer" && (
+                <DesignerPanel
+                  design={design}
+                  onDesignChange={setDesign}
+                  visibleSections={visibleSections}
+                  onToggleSection={(section) =>
+                    setVisibleSections((prev) => ({ ...prev, [section]: !prev[section] }))
+                  }
+                  onResetDesign={() => setDesign(DEFAULT_DESIGN)}
+                />
+              )}
+              {mode === "analyzer" && (
+                <AnalyzerPanel
+                  state={builderState}
+                  targetJd={targetJd}
+                  onTargetJdChange={setTargetJd}
+                />
+              )}
+            </div>
+
+            {/* Right: live Letter-page preview on a grey canvas. */}
+            <div className="min-w-0">
+              <div className="lg:sticky lg:top-32">
+                <h2 className="mb-2 text-sm font-semibold text-slate-900">Live preview</h2>
+                <ResumePreview
+                  template={selectedTemplate}
+                  state={builderState}
+                  design={design}
+                  hideSections={hideSections}
+                />
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
-      {step === "editor" && (
-        <div className="flex min-w-0 flex-col gap-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setStep("templates")}>
-              <ArrowLeft className="h-4 w-4" aria-hidden />
-              Change template
-            </Button>
-            <span className="text-sm font-medium text-slate-700">
-              Template: {selectedTemplate.name}
-            </span>
-          </div>
-
-          <Card>
-            <CardContent className="flex flex-col gap-3 pt-5">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="builder-doc-title">Document title</Label>
-                <Input
-                  id="builder-doc-title"
-                  value={docTitle}
-                  placeholder={`${selectedTemplate.name} resume`}
-                  onChange={(e) => setDocTitle(e.target.value)}
-                  className="sm:w-72"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="builder-target-jd">Target job description (optional)</Label>
-                <Textarea
-                  id="builder-target-jd"
-                  rows={3}
-                  placeholder="Paste the job description you are targeting — Co-Pilot tailors its suggestions to it."
-                  value={targetJd}
-                  onChange={(e) => setTargetJd(e.target.value)}
-                />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button disabled={saving} onClick={() => void handleSave()}>
-                  <Save className="h-4 w-4" aria-hidden />
-                  {saving ? "Saving…" : "Save"}
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={exporting !== null}
-                  onClick={() => void handleExport("pdf")}
-                >
-                  <Download className="h-4 w-4" aria-hidden />
-                  {exporting === "pdf" ? "Exporting…" : "Download PDF"}
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={exporting !== null}
-                  onClick={() => void handleExport("docx")}
-                >
-                  <Download className="h-4 w-4" aria-hidden />
-                  {exporting === "docx" ? "Exporting…" : "Download DOCX"}
-                </Button>
-              </div>
-              <div className="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="builder-save-label">Save to profile as</Label>
-                  <Input
-                    id="builder-save-label"
-                    value={saveLabel}
-                    placeholder={`${selectedTemplate.name} resume`}
-                    onChange={(e) => setSaveLabel(e.target.value)}
-                    className="sm:w-72"
-                  />
-                </div>
-                <Button
-                  variant="outline"
-                  disabled={savingToProfile}
-                  onClick={() => void handleSaveToProfile()}
-                >
-                  {savingToProfile ? "Saving…" : "Save to profile"}
-                </Button>
-                {savedResumeId && (
-                  <p className="text-sm text-emerald-700">
-                    Saved as resume {savedResumeId}.{" "}
-                    <Link href="/resumes" className="font-medium underline">
-                      View in Resumes
-                    </Link>
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="grid min-w-0 gap-6 lg:grid-cols-2">
-            <div className="flex min-w-0 flex-col gap-4">
-              <ContactSection
-                state={builderState}
-                onChange={onChange}
-                onImprove={onImprove}
-                copilotPanel={copilotTarget?.section === "contact" ? copilotPanel : undefined}
-              />
-              <SummarySection
-                state={builderState}
-                onChange={onChange}
-                onImprove={onImprove}
-                copilotPanel={copilotTarget?.section === "summary" ? copilotPanel : undefined}
-              />
-              <ExperienceSection
-                state={builderState}
-                onChange={onChange}
-                onImprove={onImprove}
-                copilotPanel={copilotTarget?.section === "experience" ? copilotPanel : undefined}
-                activeIndex={copilotTarget?.section === "experience" ? copilotTarget.index : undefined}
-              />
-              <EducationSection
-                state={builderState}
-                onChange={onChange}
-                onImprove={onImprove}
-                copilotPanel={copilotTarget?.section === "education" ? copilotPanel : undefined}
-                activeIndex={copilotTarget?.section === "education" ? copilotTarget.index : undefined}
-              />
-              <SkillsSection
-                state={builderState}
-                onChange={onChange}
-                onImprove={onImprove}
-                copilotPanel={copilotTarget?.section === "skills" ? copilotPanel : undefined}
-              />
-            </div>
-            <div className="min-w-0">
-              <div className="lg:sticky lg:top-20">
-                <h2 className="mb-2 text-sm font-semibold text-slate-900">Live preview</h2>
-                <ResumePreview template={selectedTemplate} state={builderState} />
-              </div>
-            </div>
-          </div>
-        </div>
+      {showTemplateLibrary && (
+        <TemplateLibraryModal
+          templates={templateList}
+          state={builderState}
+          selectedId={templateId}
+          onSelect={(template) => setTemplateId(template.id)}
+          onUse={() => {
+            const template =
+              templateList.find((t) => t.id === templateId) ??
+              builtinTemplateById(templateId);
+            void handleSelectTemplate(template);
+          }}
+          onClose={() => setShowTemplateLibrary(false)}
+          loading={templatesLoading}
+        />
       )}
     </div>
   );
