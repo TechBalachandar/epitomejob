@@ -1,4 +1,4 @@
-// Resume Builder — Quick Tour. First-visit onboarding in Teal's style:
+// Resume Builder — Quick Tour. First-visit onboarding:
 // a dark teal welcome card ("Ready to Improve Your Resume!") with a gold
 // "Start Quick Tour" button and a "Skip the Tour" link. The tour itself is
 // a short step-through of the real areas (home, Content, Designer,
