@@ -11,8 +11,14 @@ import {
   ACCENT_OPTIONS,
   DATE_SEPARATOR_OPTIONS,
   FONT_OPTIONS,
+  SKILLS_LAYOUT_OPTIONS,
 } from "@/lib/resume-builder";
-import type { DateAlign, DesignSettings, HeaderAlign } from "@/lib/resume-builder";
+import type {
+  DesignSettings,
+  HeaderAlign,
+  LocationAlign,
+  SkillsLayout,
+} from "@/lib/resume-builder";
 import type { BuilderSection } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -176,6 +182,11 @@ export function DesignerPanel({
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        <p className="text-xs text-slate-500">
+          Preview only — exports use the template&apos;s own styling and
+          include all sections. (The backend does not store design or
+          visibility yet.)
+        </p>
         {tab === "presentation" && (
           <>
             <div className="flex flex-col gap-1.5">
@@ -258,22 +269,28 @@ export function DesignerPanel({
               value={design.headerAlign}
               onChange={(headerAlign) => set({ headerAlign })}
             />
-            <SegmentedControl<DateAlign>
-              label="Date alignment"
+            <SegmentedControl<LocationAlign>
+              label="Location alignment"
               options={[
+                { id: "left", label: "Left" },
                 { id: "right", label: "Right" },
-                { id: "inline", label: "Inline" },
               ]}
-              value={design.dateAlign}
-              onChange={(dateAlign) => set({ dateAlign })}
+              value={design.locationAlign}
+              onChange={(locationAlign) => set({ locationAlign })}
+            />
+            <SegmentedControl<SkillsLayout>
+              label="Skills layout"
+              options={SKILLS_LAYOUT_OPTIONS.map((o) => ({ id: o.id, label: o.label }))}
+              value={design.skillsLayout}
+              onChange={(skillsLayout) => set({ skillsLayout })}
             />
           </>
         )}
         {tab === "sections" && (
           <>
             <p className="text-sm text-slate-500">
-              Show or hide sections in the preview. Hidden sections stay in
-              your document — they are only hidden from the page.
+              Show or hide sections in the preview only. Hidden sections
+              stay in your document and still appear in exports.
             </p>
             {SECTION_LABELS.map((section) => (
               <label

@@ -140,6 +140,10 @@ function builtinTemplateCss(accent: string, font: string): string {
     ul { padding-left: 18px; margin-top: 2px; }
     li { margin-bottom: 2px; }
     .skills { color: #334155; }
+    .skills-list { list-style: disc; padding-left: 18px; margin-top: 2px; }
+    .skills-list li { margin-bottom: 2px; }
+    .skills-cols { column-count: 3; column-gap: 16px; }
+    .skills-cols span { display: block; margin-bottom: 2px; }
   </style>`;
 }
 
@@ -154,7 +158,7 @@ function templateBody(): string {
     <h2>Education</h2>
     {{education}}
     <h2>Skills</h2>
-    <p class="skills">{{skills}}</p>`;
+    <div class="skills">{{skills}}</div>`;
 }
 
 function builtinTemplateHtml(accent: string, font: string): string {
@@ -201,7 +205,16 @@ export function builtinTemplateById(id: string | null): BuilderTemplate {
 // same settings drive the gallery thumbnails and the editor preview.
 
 export type HeaderAlign = "left" | "center" | "right";
-export type DateAlign = "right" | "inline";
+/**
+ * Job-head secondary alignment (Teal's "Location Alignment"): where the
+ * job's date range sits — grouped with the title/company on the left, or
+ * right-aligned opposite it. Our job entries carry no location field, so
+ * the date range is the job head's right-side element; the control is
+ * named the Teal way and drives the same layout.
+ */
+export type LocationAlign = "left" | "right";
+/** How the skills block renders: comma-joined, a bulleted list, or columns. */
+export type SkillsLayout = "comma" | "list" | "columns";
 
 export interface DesignMargins {
   top: number;
@@ -221,8 +234,10 @@ export interface DesignSettings {
   dateSeparator: string;
   /** Alignment of the name / title / contact header block. */
   headerAlign: HeaderAlign;
-  /** Where the job dates sit: right-aligned, or inline after the title. */
-  dateAlign: DateAlign;
+  /** Job-head layout: dates grouped left with the title/company, or right-aligned. */
+  locationAlign: LocationAlign;
+  /** How the skills block renders (comma / list / columns). */
+  skillsLayout: SkillsLayout;
   /** Page padding (px) — the "margins" of the Letter page. */
   margins: DesignMargins;
 }
@@ -252,13 +267,20 @@ export const DATE_SEPARATOR_OPTIONS: { id: string; label: string; value: string 
   { id: "to", label: "2021 to Present", value: " to " },
 ];
 
+export const SKILLS_LAYOUT_OPTIONS: { id: SkillsLayout; label: string }[] = [
+  { id: "comma", label: "Comma separated" },
+  { id: "list", label: "Comma separated list" },
+  { id: "columns", label: "Columns" },
+];
+
 export const DEFAULT_DESIGN: DesignSettings = {
   font: "sans",
   lineHeight: 1.5,
   accent: "#4f46e5",
   dateSeparator: " – ",
   headerAlign: "left",
-  dateAlign: "right",
+  locationAlign: "right",
+  skillsLayout: "comma",
   margins: { top: 32, right: 36, bottom: 32, left: 36 },
 };
 
@@ -274,16 +296,23 @@ export function fontStackFor(fontId: string): string {
 export function designToCss(design: DesignSettings): string {
   const { top, right, bottom, left } = design.margins;
   const dateCss =
-    design.dateAlign === "right"
+    design.locationAlign === "right"
       ? `.job-head { display: flex !important; justify-content: space-between !important; gap: 12px; } .job-dates { white-space: nowrap; }`
       : `.job-head { display: block !important; } .job-dates { display: inline !important; margin-left: 8px; }`;
+  const skillsCss =
+    design.skillsLayout === "list"
+      ? `.skills-list { list-style: disc !important; padding-left: 18px !important; margin-top: 2px !important; } .skills-list li { margin-bottom: 2px !important; }`
+      : design.skillsLayout === "columns"
+        ? `.skills-cols { column-count: 3 !important; column-gap: 16px !important; } .skills-cols span { display: block !important; margin-bottom: 2px !important; }`
+        : "";
   return [
     `body { font-family: ${fontStackFor(design.font)} !important; line-height: ${design.lineHeight} !important; padding: ${top}px ${right}px ${bottom}px ${left}px !important; }`,
     `h1, .title, .contact { text-align: ${design.headerAlign}; }`,
     `h2 { color: ${design.accent} !important; border-bottom-color: ${design.accent} !important; }`,
     `.title { color: ${design.accent} !important; }`,
     dateCss,
-  ].join("\n");
+    skillsCss,
+  ].filter(Boolean).join("\n");
 }
 
 /** Inject the design override <style> into rendered template HTML. */
@@ -324,26 +353,191 @@ const MEASURABLE_RE = /(\d|%|\$|€|£)/;
 const KEYWORD_STOPWORDS = new Set([
   "with", "that", "this", "have", "will", "your", "from", "about", "into",
   "over", "under", "more", "most", "such", "than", "then", "when", "what",
-  "where", "which", "while", "years", "experience", "work", "team", "role",
-  "candidate", "looking", "join", "help", "also", "their", "them", "they",
-  "our", "you", "the", "and", "for", "are", "but", "not", "all", "any",
-  "can", "had", "her", "was", "one", "out", "day", "get", "has", "him",
-  "his", "how", "man", "new", "now", "old", "see", "two", "way", "who",
-  "did", "its", "let", "put", "say", "she", "too", "use", "able", "per",
+  "where", "which", "while", "years", "year", "experience", "work", "team",
+  "teams", "role", "roles", "candidate", "candidates", "looking", "join",
+  "help", "also", "their", "them", "they", "our", "you", "the", "and",
+  "for", "are", "but", "not", "all", "any", "can", "had", "her", "was",
+  "one", "out", "day", "days", "get", "has", "him", "his", "how", "man",
+  "new", "now", "old", "see", "two", "way", "who", "did", "does", "its",
+  "let", "put", "say", "she", "too", "use", "able", "per", "jobs",
 ]);
 
-/** Top keywords of a job description, by frequency (words ≥ 4 chars). */
+/** Top keywords of a job description, by frequency. Words under 4 chars
+ * are dropped unless they are known tech terms (aws, sql, api, git, c#,
+ * go) — otherwise a JD asking for AWS/SQL/API/Git yields no keywords at
+ * all. TECH_TERMS / TECH_WORDS (Job Matcher section below) are the
+ * allowlists; they are only read at call time, after the module loads. */
 export function keywordsFromJobDescription(jd: string, limit = 20): string[] {
   const counts = new Map<string, number>();
-  for (const raw of jd.toLowerCase().split(/[^a-z0-9+#.]+/)) {
-    const word = raw.replace(/^[#.]+|[#.]+$/g, "");
-    if (word.length < 4 || KEYWORD_STOPWORDS.has(word)) continue;
+  for (const raw of jd.toLowerCase().split(/[^a-z0-9+#./]+/)) {
+    // Strip leading #/. (hashtags, ".net") and trailing ./ ("C#.", "ci/cd/")
+    // — but keep a trailing # so "c#" survives as a keyword.
+    const word = raw.replace(/^[#./]+|[./]+$/g, "");
+    if (word.length === 0 || KEYWORD_STOPWORDS.has(word)) continue;
+    // A slash compound is only a keyword when it is a known term (ci/cd);
+    // otherwise "and/or" or "site/remote" would pollute the keywords.
+    if (word.includes("/") && !TECH_TERMS.has(word)) continue;
+    if (word.length < 4 && !TECH_TERMS.has(word) && !TECH_WORDS.has(word)) continue;
     counts.set(word, (counts.get(word) ?? 0) + 1);
   }
   return [...counts.entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, limit)
     .map(([word]) => word);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Whole-token match, not substring: "java" must not match "JavaScript",
+ * "react" must not match "reaction", "rust" must not match "trust".
+ * A keyword counts only when it is not immediately preceded or followed
+ * by a word character. Lookarounds (not \b) are used so keywords ending
+ * in a non-word character (c#, c++) still match: after "#" a space is
+ * not a word boundary, so \b would fail there. Plurals are tolerated in
+ * both directions ("api" matches "APIs", and a JD keyword "apis" matches
+ * a resume "API") via an optional trailing "s" — a single "s", not an
+ * open-ended suffix, so "test" still does not match "testing".
+ *
+ * The plural forms are generated, never guessed from a substring:
+ * - "-es" plurals are added for any stem ending in s/x/z/ch/sh/o
+ *   ("class" → "classes", "box" → "boxes", "tomato" → "tomatoes") —
+ *   no length gate, because adding "es" only ever matches a longer,
+ *   specific word. The "o" stem is gated to words longer than 2 chars
+ *   so the Go language ("go") does not gain the verb form "goes".
+ * - The singular fallback (stripping "s") is gated: only for words
+ *   longer than 3 chars, and never off a word ending in "ss"/"us"
+ *   ("class", "status", "boss", "pass" are singular, not plurals —
+ *   stripping gives nonsense stems like "statu"/"clas"/"bos" that can
+ *   match real text). An "-es" plural strips "es" ("classes" → "class",
+ *   "tomatoes" → "tomato"), never a single "s" ("classe"/"tomatoe" is
+ *   nonsense) — except that a stem ending in "o" or "ss"/"us" is tried
+ *   both ways, because it may be a truncated e-word ("shoes" → "shoe",
+ *   "canoes" → "canoe", "houses" → "house", "reuses" → "reuse") rather
+ *   than a true -es plural. That generates the harmless nonsense forms
+ *   "tomatoe"/"heroe"/"echoe"/"classe"/"statuse" and the surnames "cano"
+ *   and "hous" as residual false positives; all are accepted because
+ *   the nonsense forms never occur in real text and the surnames only
+ *   fire on JD keywords like "canoes"/"houses", which are practically
+ *   impossible, while dropping either form would break a real match.
+ *   Only the verbs "do" and "go" push nothing ("does" must not become
+ *   "doe", "goes" must not become "goe"). And an "s" stem is only a
+ *   true -es plural when it ends in "ss"/"us" ("class", "bus");
+ *   otherwise it is a truncated e-word ("doses" → "dose", "cases" →
+ *   "case"), so the single-"s" strip is used.
+ */
+/** Compound terms that imply a base keyword: a resume saying "MySQL"
+ * is a resume that knows SQL, so keyword "sql" also matches the SQL
+ * family (MySQL, PostgreSQL, NoSQL, SQLite, MSSQL). The reverse does
+ * not hold — a JD asking for "MySQL" specifically wants MySQL, so a
+ * generic "sql" resume does not match it. Unlike java/JavaScript
+ * (different languages, correctly false), MySQL *is* SQL, so this is a
+ * genuine under-match without the map. */
+const KEYWORD_COMPOUNDS: Record<string, string[]> = {
+  sql: ["mysql", "postgresql", "nosql", "sqlite", "mssql", "sqlserver"],
+};
+
+/** Single-letter keywords need a stricter right boundary: "+" and "#"
+ * are non-word characters, so (?!\w) passes after the "C" in "C++" /
+ * "C#", and "&" passes after the "R" in "R&D" — but those are compound
+ * terms, not the standalone letter. ("Objective-C" still matches "c":
+ * it is a strict superset of C, so that match is defensible.) */
+const SINGLE_LETTER_GUARD: Record<string, string> = {
+  c: "(?![+#])",
+  r: "(?![&])",
+};
+
+export function containsKeyword(haystack: string, keyword: string): boolean {
+  if (!keyword) return false;
+  const base = keyword.toLowerCase();
+  const forms = [base];
+  // SQL-family compounds (see KEYWORD_COMPOUNDS above).
+  forms.push(...(KEYWORD_COMPOUNDS[base] ?? []));
+  // "-es" plurals (both directions) — no length gate.
+  if (base.endsWith("s")) {
+    // Singular words ending in "s" (class, status, bus) take -es.
+    forms.push(`${base}es`);
+  } else if (/(?:x|z|ch|sh)$/.test(base) || (base.length > 2 && /o$/.test(base))) {
+    // Stems ending in x/z/ch/sh/o take -es ("box" → "boxes",
+    // "tomato" → "tomatoes"). The "o" stem is gated to words longer
+    // than 2 chars so the Go language ("go") does not gain "goes".
+    forms.push(`${base}es`);
+  }
+  // Singular fallback — gated (see the comment above).
+  if (base.length > 3) {
+    if (base.endsWith("es")) {
+      const stem = base.slice(0, -2);
+      if (/(?:x|z|ch|sh)$/.test(stem)) {
+        // "-es" plural → singular ("boxes" → "box"). No length gate:
+        // 3-char x-stems ("box", "tax") are real singulars.
+        forms.push(stem);
+      } else if (/(?:ss|us)$/.test(stem)) {
+        // "-es" plural of a word ending in "ss"/"us" ("classes" →
+        // "class", "buses" → "bus"). The single-"s" strip is also
+        // tried: the stem may be a truncated e-word ("houses" →
+        // "house", "reuses" → "reuse") rather than a true -es plural.
+        // The strip is a real word for e-words and nonsense
+        // ("classe", "statuse") for true -es plurals — harmless,
+        // since the nonsense forms never occur in real text. The
+        // stem itself ("hous") is a residual in the same class as
+        // "cano": it only fires on a JD keyword like "houses".
+        forms.push(stem);
+        forms.push(base.slice(0, -1));
+      } else if (/o$/.test(stem)) {
+        // Stem ends in "o": either a true -es plural ("tomatoes" →
+        // "tomato") or a regular plural of a word ending in "e"
+        // ("shoes" → "shoe", "canoes" → "canoe"). Only the verbs
+        // "do" and "go" push nothing ("does" must not become "doe",
+        // "goes" must not become "goe"). A 2-3 char stem ("to",
+        // "fo", "wo", "sho", "obo") is a truncated e-word, so only
+        // the single-"s" strip is real. A longer stem is tried both
+        // ways ("cano" is a surname, but "canoes" must still match
+        // "canoe").
+        if (stem === "do" || stem === "go") {
+          // Verb, not a noun — push nothing.
+        } else if (stem.length > 3) {
+          forms.push(stem);
+          forms.push(base.slice(0, -1));
+        } else {
+          forms.push(base.slice(0, -1));
+        }
+      } else {
+        // Regular plural that happens to end in "es" ("services" →
+        // "service", "doses" → "dose", "cases" → "case").
+        forms.push(base.slice(0, -1));
+      }
+    } else if (base.endsWith("s")) {
+      if (!/(?:ss|us)$/.test(base)) forms.push(base.slice(0, -1));
+    }
+  }
+  return forms.some((form) => {
+    const guard = SINGLE_LETTER_GUARD[form] ?? "";
+    // Single-character forms take no plural: "c" + "s?" would match the
+    // token "CS" (Computer Science), a real false positive on most
+    // resumes ("B.S. in CS" has no C).
+    const plural = form.length > 1 ? "s?" : "";
+    return new RegExp(
+      `(?<!\\w)${escapeRegExp(form)}${guard}${plural}(?!\\w)`,
+      "i",
+    ).test(haystack);
+  });
+}
+
+/** The lowercased text the matchers search: title, summary, experience,
+ * education, skills — one string, built once, shared by analyzeResume
+ * and matchJobDescription so the two never drift. */
+export function resumeHaystack(state: ResumeBuilderState): string {
+  return [
+    state.contact.title,
+    state.summary,
+    ...state.experience.flatMap((e) => [e.title, e.company, ...e.bullets]),
+    ...state.education.flatMap((e) => [e.school, e.degree]),
+    ...state.skills,
+  ]
+    .join(" ")
+    .toLowerCase();
 }
 
 export function analyzeResume(
@@ -424,17 +618,11 @@ export function analyzeResume(
   const jd = (targetJd ?? "").trim();
   if (jd.length > 0) {
     const keywords = keywordsFromJobDescription(jd);
-    const haystack = [
-      state.contact.title,
-      state.summary,
-      ...state.experience.flatMap((e) => [e.title, e.company, ...e.bullets]),
-      ...state.education.flatMap((e) => [e.school, e.degree]),
-      ...state.skills,
-    ]
-      .join(" ")
-      .toLowerCase();
-    const hits = keywords.filter((k) => haystack.includes(k));
-    const missing = keywords.filter((k) => !haystack.includes(k));
+    const haystack = resumeHaystack(state);
+    // Each keyword is evaluated once, not once per filter.
+    const matched = new Map(keywords.map((k) => [k, containsKeyword(haystack, k)]));
+    const hits = keywords.filter((k) => matched.get(k));
+    const missing = keywords.filter((k) => !matched.get(k));
     checks.push({
       id: "keywords",
       category: "Keyword usage",
@@ -453,6 +641,138 @@ export function analyzeResume(
   const passed = checks.filter((c) => c.passed).length;
   const score = checks.length === 0 ? 0 : Math.round((100 * passed) / checks.length);
   return { score, checks, weakest: checks.find((c) => !c.passed) ?? null };
+}
+
+// --- Job Matcher (deterministic, derived from the document + JD only) -------
+// The match score is the share of the job description's keywords that
+// appear in the resume — counted, never guessed. The skills table lists
+// those keywords with a Hard/Soft classification and a matched/missing
+// status. The classification is a heuristic (documented): a keyword is a
+// Hard Skill when the resume claims it in its skills list or it matches a
+// known technical term; everything else is a Soft Skill.
+
+export type SkillMatchStatus = "matched" | "missing";
+export type SkillMatchType = "Hard Skill" | "Soft Skill";
+
+export interface SkillMatchRow {
+  keyword: string;
+  type: SkillMatchType;
+  status: SkillMatchStatus;
+}
+
+export interface JobMatch {
+  /** 0–100 keyword coverage, or null when the JD has no keywords to match. */
+  score: number | null;
+  totalKeywords: number;
+  matchedKeywords: number;
+  missingKeywords: string[];
+  skills: SkillMatchRow[];
+}
+
+const TECH_TERMS = new Set([
+  "java", "kotlin", "python", "javascript", "typescript", "react", "angular",
+  "vue", "node", "nodejs", "node.js", "spring", "spring boot", "springboot", "kafka",
+  "kubernetes", "docker", "aws", "azure", "gcp", "google cloud", "sql",
+  "postgres", "postgresql", "mysql", "mongodb", "redis", "graphql", "rest",
+  "restful", "api", "microservices", "ci/cd", "cicd", "jenkins", "terraform",
+  "linux", "git", "github", "html", "css", "android", "ios", "swift", "go",
+  "golang", "rust", "ruby", "rails", "php", "c++", "c#", "c", "r", ".net", "net", "dotnet",
+  "machine learning", "ml", "ai", "artificial intelligence", "devops",
+  "agile", "scrum", "jira", "figma", "hadoop", "spark", "airflow", "flask",
+  "django", "express", "next.js", "nextjs", "nest", "grpc", "oauth", "jwt",
+  "selenium", "cypress", "jest", "vitest", "playwright", "maven", "gradle",
+  "bash", "shell", "powershell", "nginx", "apache", "tomcat", "elasticsearch",
+  "dynamodb", "snowflake", "databricks", "tableau", "power bi", "excel",
+  "scala", "perl", "ansible", "prometheus", "grafana", "helm",
+]);
+
+/** Every individual word inside TECH_TERMS ("spring boot" → spring, boot;
+ * "machine learning" → machine, learning). Keywords are single tokens,
+ * so a multi-word term can never match one directly — its words can. */
+const TECH_WORDS = new Set(
+  [...TECH_TERMS].flatMap((term) => term.split(/[\s/]+/)),
+);
+
+function skillTypeOf(keyword: string, resumeSkills: Set<string>): SkillMatchType {
+  if (resumeSkills.has(keyword)) return "Hard Skill";
+  if (TECH_TERMS.has(keyword) || TECH_WORDS.has(keyword)) return "Hard Skill";
+  return "Soft Skill";
+}
+
+export function matchJobDescription(
+  state: ResumeBuilderState,
+  jd: string,
+  limit = 12,
+): JobMatch {
+  const keywords = keywordsFromJobDescription(jd, 20);
+  const haystack = resumeHaystack(state);
+  const resumeSkills = new Set(state.skills.map((s) => s.toLowerCase().trim()));
+  // Each keyword is evaluated once, not once per filter/map (3× before).
+  const matched = new Map(keywords.map((k) => [k, containsKeyword(haystack, k)]));
+  const hits = keywords.filter((k) => matched.get(k));
+  const missing = keywords.filter((k) => !matched.get(k));
+  const skills: SkillMatchRow[] = keywords.slice(0, limit).map((keyword) => ({
+    keyword,
+    type: skillTypeOf(keyword, resumeSkills),
+    status: matched.get(keyword) ? "matched" : "missing",
+  }));
+  // Matched first, then alphabetical — the table reads best that way.
+  skills.sort(
+    (a, b) =>
+      (a.status === b.status ? 0 : a.status === "matched" ? -1 : 1) ||
+      a.keyword.localeCompare(b.keyword),
+  );
+  return {
+    score: keywords.length === 0 ? null : Math.round((100 * hits.length) / keywords.length),
+    totalKeywords: keywords.length,
+    matchedKeywords: hits.length,
+    missingKeywords: missing,
+    skills,
+  };
+}
+
+// --- Resume list (home) ----------------------------------------------------
+// The list endpoint returns full documents; the home only needs id/title/
+// template/updatedAt, but it normalises the whole document so opening one
+// never needs a second fetch.
+
+export function normalizeBuilderDocuments(raw: unknown): ResumeBuilderDocument[] {
+  const list = Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as Record<string, unknown> | null)?.documents)
+      ? ((raw as Record<string, unknown>).documents as unknown[])
+      : [];
+  return list.map((item) => normalizeBuilderDocument(item));
+}
+
+/** Case-insensitive title search for the Recent Resumes list. */
+export function filterBuilderDocuments(
+  docs: ResumeBuilderDocument[],
+  query: string,
+): ResumeBuilderDocument[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return docs;
+  return docs.filter((d) => (d.title ?? "").toLowerCase().includes(q));
+}
+
+export type BuilderDocumentsSort = "recent" | "title";
+
+/** Recent = updatedAt desc (nulls last); title = A–Z. */
+export function sortBuilderDocuments(
+  docs: ResumeBuilderDocument[],
+  sort: BuilderDocumentsSort,
+): ResumeBuilderDocument[] {
+  const copy = [...docs];
+  if (sort === "title") {
+    return copy.sort((a, b) =>
+      (a.title ?? "").localeCompare(b.title ?? ""),
+    );
+  }
+  return copy.sort((a, b) => {
+    const at = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+    const bt = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+    return bt - at;
+  });
 }
 
 // --- Rendering -------------------------------------------------------------
@@ -490,6 +810,26 @@ function renderEducation(state: ResumeBuilderState, dateSep = " – "): string {
     .join("");
 }
 
+/**
+ * Skills block for the chosen layout. Each skill name is escaped; only
+ * the wrapping markup is HTML, so the token is substituted raw (like
+ * experience / education). "comma" is the historical rendering.
+ */
+export function renderSkills(
+  state: ResumeBuilderState,
+  layout: SkillsLayout = "comma",
+): string {
+  const names = state.skills.filter((s) => s.trim() !== "");
+  if (names.length === 0) return "";
+  if (layout === "list") {
+    return `<ul class="skills-list">${names.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ul>`;
+  }
+  if (layout === "columns") {
+    return `<div class="skills-cols">${names.map((s) => `<span>${escapeHtml(s)}</span>`).join("")}</div>`;
+  }
+  return names.map((s) => escapeHtml(s)).join(", ");
+}
+
 /** Amber highlight for [placeholder] text, e.g. [X%] or [company name]. */
 export function highlightPlaceholders(html: string): string {
   return html.replace(
@@ -501,6 +841,7 @@ export function highlightPlaceholders(html: string): string {
 const TOKEN_VALUES = (
   state: ResumeBuilderState,
   dateSep = " – ",
+  skillsLayout: SkillsLayout = "comma",
 ): Record<string, string> => ({
   fullName: state.contact.fullName,
   title: state.contact.title,
@@ -511,14 +852,14 @@ const TOKEN_VALUES = (
   summary: state.summary,
   experience: renderExperience(state, dateSep),
   education: renderEducation(state, dateSep),
-  skills: state.skills.join(", "),
+  skills: renderSkills(state, skillsLayout),
   // Backend template tokens (resume-builder-service templates use the
   // *Html suffix; the web preview must substitute them too, or the
   // sections render empty — the cleanup regex below strips any token
   // that is not substituted).
   experienceHtml: renderExperience(state, dateSep),
   educationHtml: renderEducation(state, dateSep),
-  skillsHtml: state.skills.join(", "),
+  skillsHtml: renderSkills(state, skillsLayout),
 });
 
 /**
@@ -548,11 +889,20 @@ function applyHiddenSections(
 
 /**
  * Render the document through a template's HTML. The gallery thumbnails
- * and the editor preview both call this, so what you see is what the
- * export is built from. A template without {{tokens}} falls back to the
- * built-in layout for its id (default Modern). A design, when given,
- * overrides font / line-height / accent / alignment / margins in the
- * preview only — exports use the template as stored.
+ * and the editor preview both call this, so the preview shows the design
+ * and hidden sections as the user set them. A template without {{tokens}}
+ * falls back to the built-in layout for its id (default Modern). A design,
+ * when given, overrides font / line-height / accent / alignment / margins
+ * in the preview only — exports are rendered by the backend from the
+ * stored document and do NOT apply the preview's design or hidden
+ * sections (the backend has no design/visibility fields yet). So the
+ * preview is not what the export is built from: hidden sections and
+ * Designer choices are preview-only until the backend honours them.
+ * Known limitation: the heading-strip below requires the <h2> label to
+ * match exactly ("Summary"/"Experience"/"Education"/"Skills"). A future
+ * template with "Work Experience", nested markup inside the <h2>, or
+ * static text inside the section wrapper would leave an orphan heading
+ * or text — no shipped template hits this (all 6 use the exact labels).
  */
 export function renderTemplateHtml(
   template: BuilderTemplate,
@@ -564,14 +914,73 @@ export function renderTemplateHtml(
   const raw = template.html.includes("{{")
     ? template.html
     : builtinTemplateById(template.id).html;
-  const values = TOKEN_VALUES(displayState, design?.dateSeparator ?? " – ");
+  const values = TOKEN_VALUES(
+    displayState,
+    design?.dateSeparator ?? " – ",
+    design?.skillsLayout ?? "comma",
+  );
   let html = raw;
   for (const [token, value] of Object.entries(values)) {
     const replacement =
-      token === "experience" || token === "education"
+      token === "experience" ||
+      token === "education" ||
+      token === "skills" ||
+      token === "experienceHtml" ||
+      token === "educationHtml" ||
+      token === "skillsHtml"
         ? value
         : escapeHtml(value);
     html = html.split(`{{${token}}}`).join(replacement);
+  }
+  // A hidden section must vanish entirely — heading included. Every
+  // template (built-in and backend) renders <h2>Label</h2> followed by
+  // the section token, so after substitution a hidden section is a
+  // heading followed by an empty block (or nothing). Drop the heading
+  // with it, or the preview shows an orphan heading for a section the
+  // user excluded. The match is case-insensitive on the label and the
+  // empty block may be a bare empty element or a wrapper holding only
+  // an empty <p></p> (renderExperience renders an empty section as
+  // "<p></p>"), so a template that wraps the token in a <div> or
+  // <section> is handled too.
+  const SECTION_HEADINGS: Record<string, string> = {
+    summary: "Summary",
+    experience: "Experience",
+    education: "Education",
+    skills: "Skills",
+  };
+  for (const section of options?.hideSections ?? []) {
+    const label = SECTION_HEADINGS[section];
+    if (!label) continue;
+    html = html.replace(
+      new RegExp(
+        `<h2[^>]*>\\s*${label}\\s*<\\/h2>\\s*(?:<([a-z][a-z0-9]*)[^>]*>(?:\\s|<p>\\s*<\\/p>)*<\\/\\1>)?`,
+        "gi",
+      ),
+      "",
+    );
+  }
+  // Contact has no <h2>, so the heading-strip above cannot hide it.
+  // Hiding contact empties every contact field, which leaves a
+  // separator-only line (" ·  ·  · " built-in, " |  |  | " backend)
+  // plus an empty <h1> and title. Strip the whole header block: the
+  // contact element whose text is only separators/whitespace, any
+  // separator-only paragraph (the backend header's plain <p>), the
+  // empty <h1> and title div, and the header wrapper once emptied.
+  if ((options?.hideSections ?? []).includes("contact")) {
+    html = html.replace(
+      /<(div|p)[^>]*class="[^"]*\bcontact\b[^"]*"[^>]*>[\s·|,]*<\/\1>/gi,
+      "",
+    );
+    html = html.replace(/<p[^>]*>[\s·|,]*<\/p>/gi, "");
+    html = html.replace(/<h1[^>]*>\s*<\/h1>/gi, "");
+    html = html.replace(
+      /<div[^>]*class="[^"]*\btitle\b[^"]*"[^>]*>\s*<\/div>/gi,
+      "",
+    );
+    html = html.replace(
+      /<div[^>]*class="[^"]*\bheader\b[^"]*"[^>]*>\s*<\/div>/gi,
+      "",
+    );
   }
   // Any token the template did not use is dropped, never shown literally.
   html = html.replace(/\{\{[a-zA-Z]+\}\}/g, "");
