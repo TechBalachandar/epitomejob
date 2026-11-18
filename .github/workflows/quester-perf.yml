@@ -29,7 +29,8 @@ name: Quester perf (nightly)
 
 on:
   schedule:
-    - cron: "30 11 * * *"
+    # Nightly perf: runs 11:30 PM ET so it completes by 5 AM ET, ahead of the 7 AM QA report.
+    - cron: "30 4 * * *"
   workflow_dispatch:
 
 permissions:

@@ -5,9 +5,15 @@
 //    backend -> agent-brain -> Ollama LLM; 500ms cannot hold an LLM round
 //    trip even on fast hardware. 5s bounds the route + agent-brain hop.
 // 2. NO http_req_failed threshold on 503s as such: 503 is declared an
-//    EXPECTED status (expectedStatuses: [200, 503]), so k6's http_req_failed
-//    only counts transport errors and unexpected statuses — and the
-//    rate<0.01 threshold on it stays meaningful. Ollama is NOT in compose
+//    EXPECTED status via responseCallback: http.expectedStatuses(200, 503),
+//    so k6's http_req_failed only counts transport errors and unexpected
+//    statuses — and the rate<0.01 threshold on it stays meaningful.
+//    (FIXED 2026-11-18: the script previously set
+//    params.expectedStatuses = [200, 503], a key k6's Params does not
+//    have — k6 silently ignored it, so every 503 counted as a failure
+//    and the rate<0.01 threshold could never pass while Ollama was down.
+//    Proven on the stub run: 88.23% http_req_failed with the params-field
+//    form, 0% with responseCallback.) Ollama is NOT in compose
 //    (it runs on the Mac host) and agent-brain /health is 200 even when
 //    Ollama is down, so in CI the coach call legitimately returns 503 (LLM
 //    unavailable). A 503 here proves the route, auth and backend ->
@@ -44,7 +50,9 @@ export default function (data) {
   // 503 is an EXPECTED status here (Ollama down in CI): k6 must not count
   // it in http_req_failed, so http_req_failed only counts transport errors
   // and unexpected statuses — and the rate<0.01 threshold is meaningful.
-  params.expectedStatuses = [200, 503];
+  // The mechanism is responseCallback, NOT params.expectedStatuses (a
+  // non-existent Params key k6 silently ignores — see header note 2).
+  params.responseCallback = http.expectedStatuses(200, 503);
   params.tags = { journey: 'coach' };
   const res = http.post(
     `${BASE_URL}/coach/chat`,

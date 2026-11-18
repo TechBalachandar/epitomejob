@@ -1,4 +1,4 @@
-# EpitomeJob nightly QA — full suite, daily 6:00 AM ET (11:00 UTC).
+# EpitomeJob nightly QA — full suite, nightly 11:00 PM ET (04:00 UTC).
 # Writes a qa-reports/<date>.md summary into the repo so the daily QA
 # agent (7:00 AM ET) can triage it and report at 7:05 AM ET.
 # Five suites (W4 §5b): backend (Surefire + JaCoCo), agent-brain unit
@@ -10,7 +10,8 @@ name: Nightly QA
 
 on:
   schedule:
-    - cron: "0 11 * * *"
+    # Nightly build: runs 11 PM ET so it completes by 5 AM ET, ahead of the 7 AM QA report.
+    - cron: "0 4 * * *"
   workflow_dispatch:
 
 jobs:
