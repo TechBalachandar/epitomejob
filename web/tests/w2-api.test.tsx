@@ -74,6 +74,12 @@ describe("jobs helpers", () => {
     expect(formatPostedAt("not-a-date")).toBe("Posted recently");
   });
 
+  it("B5: formatSalary never fabricates a $0k range for a salary-less posting", () => {
+    expect(formatSalary(null, null)).toBeNull();
+    expect(formatSalary(145000, null)).toBe("$145k");
+    expect(formatSalary(null, 175000)).toBe("$175k");
+  });
+
   it("labels match sources", () => {
     expect(matchSourceLabel("RESUME")).toBe("Matched on your resume");
     expect(matchSourceLabel("PROFILE")).toContain("no resume yet");

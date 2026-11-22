@@ -48,7 +48,7 @@ export default function RegisterPage() {
       });
       login(res);
       toast({ title: "Account created", description: "Welcome to EpitomeJob.", variant: "success" });
-      router.replace("/");
+      router.replace("/home");
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : "Registration failed. Try again.";

@@ -4,15 +4,18 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  BadgeCheck,
   Bell,
   BookOpen,
   Briefcase,
   CalendarCheck,
+  Clock,
   CreditCard,
   FileText,
   Inbox,
   LayoutDashboard,
   LogOut,
+  Mail,
   Menu,
   MessagesSquare,
   PenLine,
@@ -26,21 +29,27 @@ import { useAuthStore } from "@/lib/auth-store";
 import { Button } from "./ui/button";
 
 const NAV = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/home", label: "Home", icon: LayoutDashboard },
+  { href: "/clock", label: "Clock", icon: Clock },
   { href: "/profile", label: "Profile", icon: User },
   { href: "/resumes", label: "Resumes", icon: FileText },
   { href: "/resume-builder", label: "Resume Builder", icon: PenLine },
+  { href: "/cover-letter", label: "Cover Letter", icon: Mail },
   { href: "/jobs", label: "Jobs", icon: Briefcase },
   { href: "/matches", label: "Matches", icon: Sparkles },
   { href: "/coach", label: "Coach", icon: MessagesSquare },
   { href: "/approvals", label: "Approvals", icon: Inbox },
   { href: "/interviews", label: "Interviews", icon: CalendarCheck },
+  { href: "/offers", label: "Offers", icon: BadgeCheck },
   { href: "/tracker", label: "Tracker", icon: Bell },
   { href: "/plans", label: "Plans", icon: CreditCard },
   { href: "/learning", label: "Learning", icon: BookOpen },
 ];
 
-const PUBLIC_PATHS = ["/login", "/register"];
+// The landing page (`/`) is public: anyone can read it without logging
+// in. `/login` and `/register` are the auth forms. Everything else needs
+// a session.
+const PUBLIC_PATHS = ["/", "/login", "/register"];
 
 /** M13 header bell: links to /notifications, badge from useUnreadCount
  * (30s poll). Badge caps at 9+ and hides at 0; aria-label carries the
@@ -73,8 +82,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <nav className="flex flex-col gap-1 px-3 py-4" aria-label="Main">
       {NAV.map(({ href, label, icon: Icon }) => {
-        const active =
-          href === "/" ? pathname === "/" : pathname.startsWith(href);
+        const active = pathname.startsWith(href);
         return (
           <Link
             key={href}
@@ -142,6 +150,49 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   if (isPublic) {
+    // The landing page is a full-width marketing page with its own
+    // public header (Features / How it works / Pricing + Sign in /
+    // Get started). The auth forms keep the centered card layout.
+    if (pathname === "/") {
+      return (
+        <div className="flex min-h-screen flex-col bg-white">
+          <header className="sticky top-0 z-20 flex h-14 items-center gap-4 border-b border-slate-200 bg-white px-4 sm:px-6">
+            <Link href="/" className="flex items-center gap-2 font-semibold text-slate-900">
+              <span className="flex h-8 w-8 items-center justify-center rounded-md bg-indigo-600 text-sm font-bold text-white">
+                E
+              </span>
+              EpitomeJob
+            </Link>
+            <nav className="hidden items-center gap-5 text-sm font-medium text-slate-600 md:flex" aria-label="Product">
+              <Link href="/#how-it-works" className="hover:text-slate-900">How it works</Link>
+              <Link href="/#features" className="hover:text-slate-900">Features</Link>
+              <Link href="/#pricing" className="hover:text-slate-900">Pricing</Link>
+            </nav>
+            <span className="ml-auto flex items-center gap-2">
+              <Link
+                href="/login"
+                className="rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/register"
+                className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+              >
+                Get started
+              </Link>
+            </span>
+          </header>
+          <main className="flex-1">{children}</main>
+          <footer className="border-t border-slate-200 bg-slate-50 px-4 py-6 sm:px-6">
+            <p className="mx-auto w-full max-w-6xl text-sm text-slate-500">
+              EpitomeJob — AI career assistance for laid-off H-1B workers.
+              One-time pricing, no subscription.
+            </p>
+          </footer>
+        </div>
+      );
+    }
     return (
       <div className="flex min-h-screen flex-col bg-slate-50">
         <header className="flex h-14 items-center border-b border-slate-200 bg-white px-4">

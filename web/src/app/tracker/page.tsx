@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ApiError, useDeleteTracker, useTracker, useUpdateTracker } from "@/lib/api";
 import { toast } from "@/lib/toast-store";
 import type { TrackerDto, TrackerStatus } from "@/lib/types";
@@ -46,6 +47,7 @@ type DragState = {
 };
 
 export default function TrackerPage() {
+  const router = useRouter();
   const { data: cards, isLoading, isError } = useTracker();
   const update = useUpdateTracker();
   const remove = useDeleteTracker();
@@ -128,12 +130,27 @@ export default function TrackerPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Tracker</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Your applications across the pipeline. Drag cards by their handle
-          between columns to move them, edit their notes, or remove them.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Tracker</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Your applications across the pipeline. Drag cards by their handle
+            between columns to move them, edit their notes, or remove them.
+          </p>
+        </div>
+        {(cards ?? []).filter((c) => c.status === "OFFER").length >= 2 && (
+          <Button
+            onClick={() => {
+              const ids = (cards ?? [])
+                .filter((c) => c.status === "OFFER")
+                .map((c) => c.id)
+                .join(",");
+              router.push(`/offers?trackerIds=${encodeURIComponent(ids)}`);
+            }}
+          >
+            Compare offers
+          </Button>
+        )}
       </div>
 
       {isLoading && <p className="text-sm text-slate-500">Loading tracker…</p>}

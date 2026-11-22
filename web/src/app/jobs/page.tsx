@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ApiError, useApplyJob, useJobs, useResumes, useSaveJob } from "@/lib/api";
 import { formatPostedAt, formatSalary } from "@/lib/jobs";
 import { JobSource } from "@/components/job-source";
+import { TailorApplyModal } from "@/components/jobs/tailor-apply-modal";
 import { toast } from "@/lib/toast-store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,7 @@ export default function JobsPage() {
   const applyJob = useApplyJob();
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
+  const [tailorOpen, setTailorOpen] = useState(false);
 
   async function handleSave(job: Job) {
     const resumeId = resumes?.find((r) => r.status === "READY")?.id ?? null;
@@ -185,7 +187,10 @@ export default function JobsPage() {
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
                 <p className="text-sm font-medium text-slate-900">
-                  {formatSalary(selected.salaryMin, selected.salaryMax)} {selected.currency}
+                  {(() => {
+                    const salary = formatSalary(selected.salaryMin, selected.salaryMax);
+                    return salary ? `${salary} ${selected.currency}` : "Salary not listed";
+                  })()}
                 </p>
                 <p className="text-sm text-slate-600">{selected.summary}</p>
                 <div className="flex flex-wrap gap-2">
@@ -211,6 +216,13 @@ export default function JobsPage() {
                   >
                     {appliedIds.has(selected.id) ? "Approval pending" : "Apply"}
                   </Button>
+                  <Button
+                    variant="secondary"
+                    disabled={appliedIds.has(selected.id)}
+                    onClick={() => setTailorOpen(true)}
+                  >
+                    Tailor + Apply
+                  </Button>
                   <Button variant="outline" onClick={() => router.push("/matches")}>
                     See my match
                   </Button>
@@ -224,6 +236,17 @@ export default function JobsPage() {
           )}
         </Card>
       </div>
+
+      {selected && (
+        <TailorApplyModal
+          job={selected}
+          open={tailorOpen}
+          onClose={() => setTailorOpen(false)}
+          onApplied={() =>
+            setAppliedIds((s) => new Set(s).add(selected.id))
+          }
+        />
+      )}
     </div>
   );
 }

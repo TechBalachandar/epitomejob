@@ -95,6 +95,23 @@ class JobServiceTest {
   }
 
   @Test
+  fun searchFallsBackToSeededJobsWhenProviderThrows() {
+    val seeded = job(
+      "Android Developer", "Northwind", "Vienna, VA", "Onsite", true,
+      "2026-11-11T09:00:00Z"
+    )
+    Mockito.`when`(provider.search("android", null, null, null, null, PageRequest.of(0, 20)))
+      .thenThrow(IllegalStateException("Adzuna request failed"))
+    Mockito.`when`(jobs.findAll()).thenReturn(listOf(seeded))
+    val service = JobService(jobs, provider)
+
+    val page: Page<JobDto> = service.search("android", null, null, null, null, PageRequest.of(0, 20))
+
+    assertEquals(1L, page.totalElements)
+    assertEquals("Android Developer", page.content[0].title)
+  }
+
+  @Test
   fun jobSourceValidationRejectsUnknownSourceAndBadUrl() {
     val j = job(
       "Backend Engineer", "Northwind", "Reston, VA", "Hybrid", true,

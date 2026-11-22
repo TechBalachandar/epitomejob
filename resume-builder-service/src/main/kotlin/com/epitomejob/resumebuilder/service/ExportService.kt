@@ -59,7 +59,10 @@ class ExportService(private val templates: TemplateService) {
           val summary = state.path("summary").asText("")
           if (summary.isNotBlank()) {
             addHeading(doc, "Summary", 14, true)
-            addLine(doc, summary, false)
+            // The summary slot also carries cover letters, which are
+            // multi-paragraph text — each blank-line-separated block
+            // becomes its own paragraph (see addParagraphs).
+            addParagraphs(doc, summary, false)
           }
           val experience = state.path("experience")
           if (experience.isArray && !experience.isEmpty) {
@@ -117,9 +120,36 @@ class ExportService(private val templates: TemplateService) {
 
   private fun addLine(doc: XWPFDocument, text: String, bold: Boolean) {
     val paragraph = doc.createParagraph()
-    val run = paragraph.createRun()
-    run.setText(text)
-    run.setBold(bold)
+    // A literal "\n" inside a run is not a line break in Word (it
+    // needs a <w:br/>), so split the text into lines and join them
+    // with breaks — one run per line, so setText is only ever called
+    // once per run.
+    val lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    for ((index, line) in lines.withIndex()) {
+      val run = paragraph.createRun()
+      if (index > 0) {
+        run.addBreak()
+      }
+      if (line.isNotEmpty()) {
+        run.setText(line)
+      }
+      run.setBold(bold)
+    }
+  }
+
+  /**
+   * Renders multi-paragraph text (e.g. a cover letter stored in the
+   * summary slot): blank-line-separated blocks become separate
+   * paragraphs, single newlines inside a block become line breaks
+   * via [addLine].
+   */
+  private fun addParagraphs(doc: XWPFDocument, text: String, bold: Boolean) {
+    val blocks = text.replace("\r\n", "\n").replace("\r", "\n")
+        .split(Regex("\\n\\s*\\n"))
+    for (block in blocks) {
+      if (block.isBlank()) continue
+      addLine(doc, block.trim(), bold)
+    }
   }
 
   private fun joinNonEmpty(separator: String, vararg parts: String): String {
@@ -222,6 +252,11 @@ class ExportService(private val templates: TemplateService) {
       }
       for (wrapped in wrap(text, font, size)) {
         ensureSpace(leading)
+        if (wrapped.isEmpty()) {
+          // Blank line from a paragraph break — advance, draw nothing.
+          y -= leading
+          continue
+        }
         content.beginText()
         content.setFont(font, size)
         content.newLineAtOffset(margin, y)
@@ -233,19 +268,34 @@ class ExportService(private val templates: TemplateService) {
 
     private fun wrap(text: String, font: PDType1Font, size: Float): List<String> {
       val lines = mutableListOf<String>()
-      var current = StringBuilder()
-      for (word in text.split(" ")) {
-        val trial = if (current.isEmpty()) word else "$current $word"
-        val width = font.getStringWidth(trial) / 1000f * size
-        if (width > textWidth && current.isNotEmpty()) {
-          lines.add(current.toString())
-          current = StringBuilder(word)
-        } else {
-          current = StringBuilder(trial)
+      // Split on newlines first: wrap used to split only on spaces, so
+      // a "\n" stayed embedded in a word token and showText was fed a
+      // control character WinAnsi Helvetica has no glyph for (missing
+      // glyph at best, a thrown exception and a failed export at
+      // worst). Blank segments become blank lines, so paragraph breaks
+      // survive. Other C0 control characters are stripped for the same
+      // reason; "\r" is normalised to "\n" before splitting.
+      val clean = text.replace("\r\n", "\n").replace("\r", "\n")
+          .replace(Regex("[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]"), "")
+      for (segment in clean.split("\n")) {
+        if (segment.isBlank()) {
+          lines.add("")
+          continue
         }
-      }
-      if (current.isNotEmpty()) {
-        lines.add(current.toString())
+        var current = StringBuilder()
+        for (word in segment.split(" ")) {
+          val trial = if (current.isEmpty()) word else "$current $word"
+          val width = font.getStringWidth(trial) / 1000f * size
+          if (width > textWidth && current.isNotEmpty()) {
+            lines.add(current.toString())
+            current = StringBuilder(word)
+          } else {
+            current = StringBuilder(trial)
+          }
+        }
+        if (current.isNotEmpty()) {
+          lines.add(current.toString())
+        }
       }
       return lines
     }

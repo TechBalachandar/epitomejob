@@ -1,13 +1,14 @@
-// Resume Builder — template gallery. Every card renders a LIVE thumbnail
-// from the same template HTML the editor preview uses (renderTemplateHtml
-// with the sample or the parsed document state) — no server-side images.
-// The iframe is a scaled-down A4 page (794×1123 at 0.42), pointer-events
-// off so the card itself stays the click target.
+// Resume Builder — template gallery (select-only grid). Every card
+// renders a LIVE thumbnail from the same template HTML the editor preview
+// uses (renderTemplateHtml with the sample or the parsed document state)
+// — no server-side images. The iframe is a scaled-down A4 page (794×1123
+// at 0.42), pointer-events off so the card itself stays the click target.
+// Clicking a card SELECTS it (onSelect); the "Use Template" commit lives
+// in the Template Library modal that wraps this grid.
 import { renderTemplateHtml } from "@/lib/resume-builder";
 import type { BuilderTemplate, ResumeBuilderState } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 export function TemplateGallery({
@@ -29,48 +30,43 @@ export function TemplateGallery({
           <Card
             key={template.id}
             className={cn(
-              "overflow-hidden",
+              "overflow-hidden transition-shadow",
               selected && "ring-2 ring-indigo-600",
             )}
           >
-            <div
-              className="relative h-[300px] cursor-pointer overflow-hidden bg-white"
+            <button
+              type="button"
+              aria-label={`Select ${template.name} template`}
+              aria-pressed={selected}
               onClick={() => onSelect(template)}
-              aria-hidden
+              className="block w-full text-left"
             >
-              <iframe
-                title={`${template.name} template preview`}
-                tabIndex={-1}
-                srcDoc={renderTemplateHtml(template, state)}
-                className="pointer-events-none absolute border-0 bg-white"
-                style={{
-                  width: 794,
-                  height: 1123,
-                  transform: "scale(0.42)",
-                  transformOrigin: "top left",
-                  left: "50%",
-                  marginLeft: -167,
-                }}
-              />
-            </div>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <CardTitle>{template.name}</CardTitle>
-                {selected && <Badge variant="success">Selected</Badge>}
+              <div className="relative h-[300px] cursor-pointer overflow-hidden bg-white">
+                <iframe
+                  title={`${template.name} template preview`}
+                  tabIndex={-1}
+                  srcDoc={renderTemplateHtml(template, state)}
+                  className="pointer-events-none absolute border-0 bg-white"
+                  style={{
+                    width: 794,
+                    height: 1123,
+                    transform: "scale(0.42)",
+                    transformOrigin: "top left",
+                    left: "50%",
+                    marginLeft: -167,
+                  }}
+                />
               </div>
-              {template.description && (
-                <CardDescription>{template.description}</CardDescription>
-              )}
-            </CardHeader>
-            <CardContent>
-              <Button
-                className="w-full"
-                variant={selected ? "default" : "outline"}
-                onClick={() => onSelect(template)}
-              >
-                {selected ? "Selected — continue editing" : `Use ${template.name}`}
-              </Button>
-            </CardContent>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <CardTitle>{template.name}</CardTitle>
+                  {selected && <Badge variant="success">Selected</Badge>}
+                </div>
+                {template.description && (
+                  <CardDescription>{template.description}</CardDescription>
+                )}
+              </CardHeader>
+            </button>
           </Card>
         );
       })}

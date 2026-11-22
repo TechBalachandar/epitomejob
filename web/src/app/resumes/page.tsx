@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Pencil, UploadCloud } from "lucide-react";
+import { AtsPreview } from "@/components/resumes/ats-preview";
 import type { ResumeItem } from "@/lib/types";
 
 function statusBadge(status: string) {
@@ -104,6 +105,9 @@ function ResumeRow({ resume }: { resume: ResumeItem }) {
         )}
       </span>
       {statusBadge(resume.status)}
+      {resume.status === "READY" && (
+        <AtsPreview resumeId={resume.id} label={resume.label} />
+      )}
     </li>
   );
 }

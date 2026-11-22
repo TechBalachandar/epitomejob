@@ -14,6 +14,7 @@ import { toast } from "@/lib/toast-store";
 import type { AnswerDto } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { InterviewPrep } from "@/components/interviews/interview-prep";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -122,11 +123,14 @@ export default function InterviewsPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Interviews</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Pick a job, start a mock interview, and answer the 5 questions one
-          at a time. Each answer gets a deterministic rubric score — the AI
-          interviewer arrives in W3.
+          Prepare with model answers grounded in your resume, or run a mock
+          interview and answer the 5 questions one at a time. Each mock
+          answer gets a deterministic rubric score — the AI interviewer
+          arrives in W3.
         </p>
       </div>
+
+      <InterviewPrep jobs={jobs} />
 
       <Card>
         <CardHeader>

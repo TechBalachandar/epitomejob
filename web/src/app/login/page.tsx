@@ -37,7 +37,7 @@ export default function LoginPage() {
       const res = await loginRequest(values);
       login(res);
       toast({ title: "Welcome back", variant: "success" });
-      router.replace("/");
+      router.replace("/home");
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : "Login failed. Try again.";

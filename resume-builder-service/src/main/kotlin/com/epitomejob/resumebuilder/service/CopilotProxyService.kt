@@ -23,13 +23,14 @@ import java.util.UUID
  * unchanged. The caller's Bearer token is forwarded so the agent-brain
  * can validate it.
  *
- * CONTRACT GAP (2026-11-14, live main 3855e76): the agent-brain on main
- * exposes POST /chat, /rag/index and /rag/query — it has NO
- * POST /resume-builder/copilot endpoint yet. This proxy targets the
- * endpoint the RB brief specifies; until the agent-brain worker adds it,
- * every copilot call will come back as the agent-brain's 404 (forwarded
- * verbatim) or 502 if the service is down. The journey IT stubs the
- * endpoint, so the proxy itself is proven here either way.
+ * CONTRACT GAP — CORRECTED 2026-11-18: this comment (2026-11-14) said the
+ * agent-brain had NO POST /resume-builder/copilot endpoint yet. That was
+ * true of main at the time, but the endpoint was added the same day in
+ * ed11216 and EXISTS on this branch (agent-brain/app/main.py:254). Do not
+ * re-add 404 tolerance for copilot on the strength of this old note: a
+ * 404 from the proxy now means the route is broken, not a missing
+ * endpoint. The journey IT stubs the endpoint, so the proxy itself is
+ * proven here either way.
  */
 @Service
 class CopilotProxyService(

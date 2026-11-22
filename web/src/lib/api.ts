@@ -31,6 +31,7 @@ import {
   BUILTIN_TEMPLATES,
   filenameFromContentDisposition,
   normalizeBuilderDocument,
+  normalizeBuilderDocuments,
   normalizeBuilderTemplates,
   normalizeCopilotResponse,
   normalizeSaveToProfile,
@@ -417,11 +418,12 @@ export interface JobFilters {
   size?: number;
 }
 
-export function useJobs(filters: JobFilters = {}) {
+export function useJobs(filters: JobFilters = {}, options?: { enabled?: boolean }) {
   const query = buildJobsQuery(filters);
   return useQuery({
     queryKey: ["jobs", filters],
     queryFn: () => apiFetch<JobPage>(`/jobs${query}`),
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -672,6 +674,20 @@ export async function parseBuilderResume(
     body: form,
   });
   return normalizeBuilderDocument(raw);
+}
+
+/** GET /resume-builder/documents — the user's documents, newest first. */
+export async function fetchBuilderDocuments(): Promise<ResumeBuilderDocument[]> {
+  const raw = await apiFetch<unknown>("/resume-builder/documents");
+  return normalizeBuilderDocuments(raw);
+}
+
+export function useBuilderDocuments(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ["resume-builder", "documents"],
+    queryFn: () => fetchBuilderDocuments(),
+    enabled: options?.enabled ?? true,
+  });
 }
 
 /** POST /resume-builder/documents — create a document from state. */

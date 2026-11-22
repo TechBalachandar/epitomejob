@@ -3,6 +3,8 @@ package com.epitomejob.resumebuilder.service
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
+import org.apache.pdfbox.pdmodel.PDDocument
+import org.apache.pdfbox.text.PDFTextStripper
 import org.apache.poi.xwpf.usermodel.XWPFDocument
 import org.junit.jupiter.api.Test
 import java.io.ByteArrayInputStream
@@ -104,6 +106,45 @@ class ExportServiceTest {
     val pdf = service.exportPdf("modern", big)
     assertThat(String(pdf, 0, 5, StandardCharsets.US_ASCII)).isEqualTo("%PDF-")
     assertThat(pdf.size).isGreaterThan(500)
+  }
+
+  @Test
+  fun docxExportKeepsCoverLetterParagraphsSeparate() {
+    // B1: a cover letter stored in the summary slot (paragraphs joined
+    // with "\n\n") must export as separate paragraphs — a literal "\n"
+    // in a single run is not a line break in Word.
+    val letter = state()
+    letter.put("summary", "Dear Hiring Manager,\n\nI am excited to apply for the Senior Engineer role.\nI bring ten years of experience.\n\nSincerely,\nAda Lovelace")
+    val docx = service.exportDocx("modern", letter)
+    XWPFDocument(ByteArrayInputStream(docx)).use { doc ->
+      val texts = doc.paragraphs.map { it.text }
+      assertThat(texts).contains("Dear Hiring Manager,")
+      assertThat(texts.any { it.startsWith("I am excited to apply") }).isTrue()
+      assertThat(texts.any { it.startsWith("Sincerely,") }).isTrue()
+      assertThat(texts.none { it.contains("\n") }).isTrue()
+      val greeting = texts.indexOf("Dear Hiring Manager,")
+      val body = texts.indexOfFirst { it.startsWith("I am excited to apply") }
+      val closing = texts.indexOfFirst { it.startsWith("Sincerely,") }
+      assertThat(greeting).isLessThan(body)
+      assertThat(body).isLessThan(closing)
+    }
+  }
+
+  @Test
+  fun pdfExportKeepsCoverLetterParagraphsAndDoesNotFail() {
+    // B1: the PDF path used to feed "\n" to WinAnsi Helvetica (missing
+    // glyph at best, a thrown exception and a failed export at worst).
+    // A multi-paragraph summary must export cleanly with its
+    // paragraphs intact.
+    val letter = state()
+    letter.put("summary", "Dear Hiring Manager,\n\nI am excited to apply for the Senior Engineer role.\n\nSincerely,\nAda Lovelace")
+    val pdf = service.exportPdf("modern", letter)
+    assertThat(String(pdf, 0, 5, StandardCharsets.US_ASCII)).isEqualTo("%PDF-")
+    PDDocument.load(pdf).use { doc ->
+      val extracted = PDFTextStripper().getText(doc)
+      assertThat(extracted).contains("Dear Hiring Manager,", "Sincerely,")
+      assertThat(extracted).contains("I am excited to apply for the Senior Engineer role.")
+    }
   }
 
   @Test

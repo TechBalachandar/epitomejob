@@ -18,7 +18,7 @@ BASE_URL="${K6_BASE_URL:-http://localhost:8080}"
 OUT_DIR="${K6_OUT_DIR:-k6-results}"
 mkdir -p "$OUT_DIR"
 
-SCRIPTS="login profile jobs matches tracker coach"
+SCRIPTS="login profile jobs matches tracker coach resume-builder resume-text copilot approvals interviews sponsor-jobs"
 FAILED=()
 : > "$OUT_DIR/status.txt"
 

@@ -8,6 +8,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
+import type { Job } from "@/lib/types";
 import {
   exportBuilderDocument,
   fetchBuilderTemplates,
@@ -18,24 +19,50 @@ import {
 import { useAuthStore } from "@/lib/auth-store";
 import {
   BUILTIN_TEMPLATES,
+  DEFAULT_DESIGN,
+  FONT_OPTIONS,
+  analyzeResume,
   applyCopilotOption,
+  applyDesignOverrides,
+  containsKeyword,
   copilotContextFor,
+  designToCss,
   emptyBuilderState,
   filenameFromContentDisposition,
+  filterBuilderDocuments,
+  fontStackFor,
   hasPlaceholders,
   highlightPlaceholders,
+  keywordsFromJobDescription,
+  matchJobDescription,
   normalizeBuilderDocument,
+  normalizeBuilderDocuments,
   normalizeBuilderTemplates,
   normalizeCopilotResponse,
+  normalizeSaveToProfile,
   renderTemplateHtml,
+  resumeHaystack,
   sampleBuilderState,
+  sortBuilderDocuments,
   splitPlaceholders,
+  templateLayoutOf,
+  templateStyleOf,
   triggerBlobDownload,
   updateExperienceItem,
   validateBuilderFile,
 } from "@/lib/resume-builder";
 import type { BuilderTemplate, ResumeBuilderState } from "@/lib/types";
 import { TemplateGallery } from "@/components/resume-builder/template-gallery";
+import { TemplateLibraryModal } from "@/components/resume-builder/template-library-modal";
+import { DesignerPanel } from "@/components/resume-builder/designer-panel";
+import { AnalyzerPanel } from "@/components/resume-builder/analyzer-panel";
+import { JobMatcherPanel, jobDescriptionForJob } from "@/components/resume-builder/job-matcher-panel";
+import { BuilderMenu } from "@/components/resume-builder/builder-menu";
+import { ResumeHome } from "@/components/resume-builder/resume-home";
+import {
+  BUILDER_TOUR_SEEN_KEY,
+  QuickTourModal,
+} from "@/components/resume-builder/quick-tour";
 import ResumeBuilderPage from "@/app/resume-builder/page";
 
 // The page reads ?documentId= via next/navigation; control it per test.
@@ -222,6 +249,39 @@ describe("renderTemplateHtml", () => {
     expect(renderTemplateHtml(BUILTIN_TEMPLATES[1], state)).toContain("Alex Morgan");
     expect(hasPlaceholders({ ...emptyBuilderState(), summary: "Did [X]" })).toBe(true);
     expect(hasPlaceholders(emptyBuilderState())).toBe(false);
+  });
+
+  it("hiding contact removes the whole header block, not just the fields (arch #2)", () => {
+    // Contact has no <h2>, so the heading-strip cannot hide it. Hiding
+    // it must not leave a separator-only line (" ·  ·  · ") or an empty
+    // <h1> / title in the preview.
+    const state = sampleBuilderState();
+    const html = renderTemplateHtml(BUILTIN_TEMPLATES[0], state, {
+      hideSections: ["contact"],
+    });
+    expect(html).not.toContain("Alex Morgan");
+    expect(html).not.toMatch(/<h1[^>]*>\s*<\/h1>/);
+    expect(html).not.toContain("·  ·  ·");
+    expect(html).not.toContain("|  |  |");
+    // The rest of the document is untouched.
+    expect(html).toContain("Senior Software Engineer");
+    expect(html).toContain("Meridian Care Technologies");
+    // Same for a backend-shaped template (header div + | separators).
+    const backendStyle: BuilderTemplate = {
+      id: "modern",
+      name: "Modern",
+      description: "",
+      html: `<!doctype html><html><head><meta charset="utf-8"></head><body><div class="header"><h1>{{fullName}}</h1><p>{{email}} | {{phone}} | {{linkedin}} | {{location}}</p></div><h2>Summary</h2><p>{{summary}}</p></body></html>`,
+    };
+    const backendHtml = renderTemplateHtml(backendStyle, state, {
+      hideSections: ["contact"],
+    });
+    expect(backendHtml).not.toContain("Alex Morgan");
+    expect(backendHtml).not.toMatch(/<h1[^>]*>\s*<\/h1>/);
+    expect(backendHtml).not.toContain("|  |  |");
+    // The rest of the document is untouched (this template has no
+    // {{title}} token, so the summary is the check).
+    expect(backendHtml).toContain("Software engineer with 8 years");
   });
 });
 
@@ -449,7 +509,10 @@ describe("TemplateGallery", () => {
     for (const frame of frames) {
       expect(frame.getAttribute("srcDoc")).toContain("Alex Morgan");
     }
-    expect(screen.getAllByRole("button", { name: /Use / })).toHaveLength(3);
+    // Select-only grid: one select button per template, no commit here.
+    expect(
+      screen.getAllByRole("button", { name: /Select .* template/ }),
+    ).toHaveLength(3);
   });
 
   it("marks the selected template and calls onSelect", async () => {
@@ -464,7 +527,7 @@ describe("TemplateGallery", () => {
       />,
     );
     expect(screen.getByText("Selected")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Use Minimal" }));
+    await user.click(screen.getByRole("button", { name: "Select Minimal template" }));
     expect(onSelect).toHaveBeenCalledWith(
       expect.objectContaining({ id: "minimal" }),
     );
@@ -473,8 +536,17 @@ describe("TemplateGallery", () => {
 
 describe("ResumeBuilderPage flow", () => {
   function stubBuilderPage(copilotImpl?: () => Response) {
+    // The page shows the Quick Tour on first visit; the flow tests cover
+    // the editor, not the tour, so mark it seen first.
+    window.localStorage.setItem(BUILDER_TOUR_SEEN_KEY, "1");
     const fetchMock = mockFetch((url, init) => {
       if (url === "/api/resume-builder/templates") return jsonResponse(TEMPLATES);
+      if (
+        url === "/api/resume-builder/documents" &&
+        (!init?.method || init.method === "GET")
+      ) {
+        return jsonResponse([]);
+      }
       if (url === "/api/resume-builder/parse" && init?.method === "POST") {
         return jsonResponse(PARSED_DOC, 201);
       }
@@ -507,25 +579,29 @@ describe("ResumeBuilderPage flow", () => {
     return fetchMock;
   }
 
-  it("entry → Build fresh → template pick → editor; typing updates the live preview", async () => {
+  it("home → Start from template → template pick → editor; typing updates the live preview", async () => {
     const user = userEvent.setup();
     stubBuilderPage();
     render(<ResumeBuilderPage />, { wrapper });
 
-    expect(
-      screen.getByText(/Upload your resume to start from what you have/),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Upload a resume/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Build fresh/ })).toBeInTheDocument();
+    // The landing is the resume list with the action cards.
+    expect(screen.getByRole("heading", { name: "Resume Builder" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /New Resume/ }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("button", { name: /Start from job description/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Start from template/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Import it/ })).toBeInTheDocument();
+    expect(screen.getByText("Recent Resumes")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Build fresh/ }));
+    await user.click(screen.getByRole("button", { name: /Start from template/ }));
     await waitFor(() =>
       expect(screen.getByText("Choose a template")).toBeInTheDocument(),
     );
-    expect(screen.getByText("Modern")).toBeInTheDocument();
-    expect(screen.getByText("Classic")).toBeInTheDocument();
-    expect(screen.getByText("Minimal")).toBeInTheDocument();
+    // Names appear both as style filters and as gallery cards.
+    expect(screen.getAllByText("Modern").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Classic").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Minimal").length).toBeGreaterThan(0);
 
+    await user.click(screen.getByRole("button", { name: "Select Modern template" }));
     await user.click(screen.getByRole("button", { name: "Use Modern" }));
     await waitFor(() =>
       expect(screen.getByLabelText("Full name")).toBeInTheDocument(),
@@ -541,16 +617,17 @@ describe("ResumeBuilderPage flow", () => {
     await user.type(nameInput, "Alex Morgan");
     const preview = screen.getByTestId("resume-preview") as HTMLIFrameElement;
     expect(preview.getAttribute("srcDoc")).toContain("Alex Morgan");
-    expect(screen.getByRole("button", { name: "Download PDF" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export PDF" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Download DOCX" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save to profile" })).toBeInTheDocument();
   });
 
-  it("upload → parse → templates with the parsed state", async () => {
+  it("home → Import resume → upload → parse → templates with the parsed state", async () => {
     stubBuilderPage();
     render(<ResumeBuilderPage />, { wrapper });
 
-    await userEvent.setup().click(screen.getByRole("button", { name: /Upload a resume/ }));
+    // Import opens the entry step with the upload already shown.
+    await userEvent.setup().click(screen.getByRole("button", { name: /Import it/ }));
     const input = screen.getByTestId("builder-file-input") as HTMLInputElement;
     const file = new File(["%PDF"], "cv.pdf", { type: "application/pdf" });
     fireEvent.change(input, { target: { files: [file] } });
@@ -558,6 +635,9 @@ describe("ResumeBuilderPage flow", () => {
     await waitFor(() =>
       expect(screen.getByText("Choose a template")).toBeInTheDocument(),
     );
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Select Classic template" }));
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "Use Classic" }));
@@ -574,7 +654,7 @@ describe("ResumeBuilderPage flow", () => {
   it("rejects a .txt upload client-side without calling the server", async () => {
     const fetchMock = stubBuilderPage();
     render(<ResumeBuilderPage />, { wrapper });
-    await userEvent.setup().click(screen.getByRole("button", { name: /Upload a resume/ }));
+    await userEvent.setup().click(screen.getByRole("button", { name: /Import it/ }));
     const input = screen.getByTestId("builder-file-input") as HTMLInputElement;
     fireEvent.change(input, {
       target: { files: [new File(["x"], "cv.txt", { type: "text/plain" })] },
@@ -593,15 +673,20 @@ describe("ResumeBuilderPage flow", () => {
     stubBuilderPage();
     render(<ResumeBuilderPage />, { wrapper });
 
-    await user.click(screen.getByRole("button", { name: /Build fresh/ }));
+    await user.click(screen.getByRole("button", { name: /Start from template/ }));
     await waitFor(() =>
       expect(screen.getByText("Choose a template")).toBeInTheDocument(),
     );
+    await user.click(screen.getByRole("button", { name: "Select Modern template" }));
     await user.click(screen.getByRole("button", { name: "Use Modern" }));
     await waitFor(() =>
-      expect(screen.getByLabelText("Summary")).toBeInTheDocument(),
+      expect(
+        screen.getByRole("button", { name: "Improve summary with AI" }),
+      ).toBeInTheDocument(),
     );
 
+    // "Improve with AI" also expands the collapsed Summary section, so the
+    // Co-Pilot panel (inside the section form) becomes visible.
     await user.click(screen.getByRole("button", { name: "Improve summary with AI" }));
     await waitFor(() =>
       expect(screen.getByTestId("copilot-panel")).toBeInTheDocument(),
@@ -630,14 +715,19 @@ describe("ResumeBuilderPage flow", () => {
     stubBuilderPage(() => jsonResponse({ message: "Co-Pilot unavailable" }, 503));
     render(<ResumeBuilderPage />, { wrapper });
 
-    await user.click(screen.getByRole("button", { name: /Build fresh/ }));
+    await user.click(screen.getByRole("button", { name: /Start from template/ }));
     await waitFor(() =>
       expect(screen.getByText("Choose a template")).toBeInTheDocument(),
     );
+    await user.click(screen.getByRole("button", { name: "Select Modern template" }));
     await user.click(screen.getByRole("button", { name: "Use Modern" }));
     await waitFor(() =>
-      expect(screen.getByLabelText("Summary")).toBeInTheDocument(),
+      expect(
+        screen.getByRole("button", { name: "Improve summary with AI" }),
+      ).toBeInTheDocument(),
     );
+    // "Improve with AI" also expands the collapsed Summary section, so the
+    // Co-Pilot panel (inside the section form) becomes visible.
     await user.click(screen.getByRole("button", { name: "Improve summary with AI" }));
     await waitFor(() =>
       expect(screen.getByTestId("copilot-panel")).toBeInTheDocument(),
@@ -647,8 +737,10 @@ describe("ResumeBuilderPage flow", () => {
         "Co-Pilot unavailable",
       ),
     );
-    // The page is still usable — the editor is intact.
-    expect(screen.getByLabelText("Full name")).toBeInTheDocument();
+    // The page is still usable — the editor is intact (Summary is the
+    // section that was just expanded by "Improve with AI").
+    expect(screen.getByLabelText("Summary")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export PDF" })).toBeInTheDocument();
   });
 
   it("download triggers a file download and save-to-profile shows the resume id + link", async () => {
@@ -661,16 +753,17 @@ describe("ResumeBuilderPage flow", () => {
     stubBuilderPage();
     render(<ResumeBuilderPage />, { wrapper });
 
-    await user.click(screen.getByRole("button", { name: /Build fresh/ }));
+    await user.click(screen.getByRole("button", { name: /Start from template/ }));
     await waitFor(() =>
       expect(screen.getByText("Choose a template")).toBeInTheDocument(),
     );
+    await user.click(screen.getByRole("button", { name: "Select Modern template" }));
     await user.click(screen.getByRole("button", { name: "Use Modern" }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Download PDF" })).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: "Export PDF" })).toBeInTheDocument(),
     );
 
-    await user.click(screen.getByRole("button", { name: "Download PDF" }));
+    await user.click(screen.getByRole("button", { name: "Export PDF" }));
     await waitFor(() => expect(createSpy).toHaveBeenCalled());
 
     const labelInput = screen.getByLabelText("Save to profile as") as HTMLInputElement;
@@ -690,10 +783,11 @@ describe("ResumeBuilderPage flow", () => {
     stubBuilderPage();
     render(<ResumeBuilderPage />, { wrapper });
 
-    await user.click(screen.getByRole("button", { name: /Build fresh/ }));
+    await user.click(screen.getByRole("button", { name: /Start from template/ }));
     await waitFor(() =>
       expect(screen.getByText("Choose a template")).toBeInTheDocument(),
     );
+    await user.click(screen.getByRole("button", { name: "Select Minimal template" }));
     await user.click(screen.getByRole("button", { name: "Use Minimal" }));
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Add experience" })).toBeInTheDocument(),
@@ -705,5 +799,2357 @@ describe("ResumeBuilderPage flow", () => {
     expect(preview.getAttribute("srcDoc")).toContain("Staff Engineer");
     await user.click(screen.getByRole("button", { name: "Remove experience 1" }));
     expect(screen.queryByLabelText("Job title")).not.toBeInTheDocument();
+  });
+
+  it("starting fresh resets design and section visibility (N-17)", async () => {
+    // Customise doc-1 (serif font + hide Experience), go home, then
+    // start fresh from a template: the new document must have the
+    // default design and all sections visible — the previous document's
+    // preview choices must not leak into it.
+    const user = userEvent.setup();
+    window.localStorage.setItem(BUILDER_TOUR_SEEN_KEY, "1");
+    const fetchMock = mockFetch((url, init) => {
+      if (url === "/api/resume-builder/templates") return jsonResponse(TEMPLATES);
+      if (
+        url === "/api/resume-builder/documents" &&
+        (!init?.method || init.method === "GET")
+      ) {
+        return jsonResponse([
+          { ...PARSED_DOC, id: "doc-1", templateId: "modern", title: "Modern resume" },
+        ]);
+      }
+      if (url === "/api/resume-builder/documents" && init?.method === "POST") {
+        return jsonResponse({ ...PARSED_DOC, id: "doc-2", templateId: "modern" }, 201);
+      }
+      return jsonResponse({ message: "not found" }, 404);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ResumeBuilderPage />, { wrapper });
+
+    await waitFor(() =>
+      expect(screen.getByText("Modern resume")).toBeInTheDocument(),
+    );
+    await user.click(screen.getByTestId("builder-doc-title"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Full name")).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole("tab", { name: "Designer" }));
+    await user.selectOptions(screen.getByLabelText("Font"), "serif");
+    await user.click(screen.getByRole("tab", { name: "Sections" }));
+    await user.click(screen.getByLabelText("Show Experience section"));
+    expect(
+      (screen.getByLabelText("Show Experience section") as HTMLInputElement).checked,
+    ).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Back to Resumes" }));
+    await waitFor(() =>
+      expect(screen.getByText("Recent Resumes")).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: /Start from template/ }));
+    await waitFor(() =>
+      expect(screen.getByText("Choose a template")).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: "Select Modern template" }));
+    await user.click(screen.getByRole("button", { name: "Use Modern" }));
+    // Mode is session state, not per-document: it is still "designer"
+    // from the customisation above, so switch back to Content first.
+    await user.click(screen.getByRole("tab", { name: "Content" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Full name")).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole("tab", { name: "Designer" }));
+    expect((screen.getByLabelText("Font") as HTMLSelectElement).value).toBe("sans");
+    await user.click(screen.getByRole("tab", { name: "Sections" }));
+    expect(
+      (screen.getByLabelText("Show Experience section") as HTMLInputElement).checked,
+    ).toBe(true);
+  });
+});
+
+describe("design settings (Designer mode)", () => {
+  it("designToCss overrides font, line-height, accent, alignment, location alignment, skills layout and margins", () => {
+    const css = designToCss({
+      ...DEFAULT_DESIGN,
+      font: "serif",
+      lineHeight: 1.8,
+      accent: "#0f766e",
+      headerAlign: "center",
+      locationAlign: "right",
+      skillsLayout: "list",
+      margins: { top: 48, right: 48, bottom: 48, left: 48 },
+    });
+    expect(css).toContain("Georgia");
+    expect(css).toContain("line-height: 1.8");
+    expect(css).toContain("#0f766e");
+    expect(css).toContain("text-align: center");
+    expect(css).toContain("padding: 48px 48px 48px 48px");
+    expect(css).toContain("justify-content: space-between");
+    expect(css).toContain(".skills-list");
+  });
+
+  it("designToCss left location alignment keeps dates inline", () => {
+    const css = designToCss({ ...DEFAULT_DESIGN, locationAlign: "left" });
+    expect(css).toContain("display: block");
+    expect(css).toContain(".job-dates { display: inline");
+  });
+
+  it("designToCss columns skills layout emits column CSS", () => {
+    const css = designToCss({ ...DEFAULT_DESIGN, skillsLayout: "columns" });
+    expect(css).toContain("column-count: 3");
+    expect(css).toContain(".skills-cols");
+  });
+
+  it("applyDesignOverrides injects one override style block", () => {
+    const html = renderTemplateHtml(BUILTIN_TEMPLATES[0], sampleBuilderState(), {
+      design: { ...DEFAULT_DESIGN, accent: "#0f766e", lineHeight: 1.75 },
+    });
+    expect(html).toContain("data-design");
+    expect(html).toContain("#0f766e");
+    expect(html).toContain("line-height: 1.75");
+    expect(html).toContain("Alex Morgan");
+  });
+
+  it("renderTemplateHtml honours the date separator and hidden sections", () => {
+    const state = sampleBuilderState();
+    const withTo = renderTemplateHtml(BUILTIN_TEMPLATES[0], state, {
+      design: { ...DEFAULT_DESIGN, dateSeparator: " to " },
+    });
+    expect(withTo).toContain("2021 to Present");
+    const hidden = renderTemplateHtml(BUILTIN_TEMPLATES[0], state, {
+      hideSections: ["skills", "education"],
+    });
+    expect(hidden).not.toContain("Java, Spring Boot");
+    expect(hidden).not.toContain("George Mason University");
+    expect(hidden).toContain("Alex Morgan");
+    // B-1: a hidden section's heading goes with its content — no orphan <h2>.
+    expect(hidden).not.toContain("<h2>Skills</h2>");
+    expect(hidden).not.toContain("<h2>Education</h2>");
+    expect(hidden).toContain("<h2>Experience</h2>");
+    expect(hidden).toContain("<h2>Summary</h2>");
+    // Without options the render is unchanged.
+    const plain = renderTemplateHtml(BUILTIN_TEMPLATES[0], state);
+    expect(plain).toContain("2021 – Present");
+    expect(plain).toContain("Java, Spring Boot");
+  });
+
+  it("templateStyleOf / templateLayoutOf derive real filter values", () => {
+    expect(templateStyleOf(BUILTIN_TEMPLATES[0])).toBe("Modern");
+    expect(templateStyleOf(BUILTIN_TEMPLATES[1])).toBe("Classic");
+    expect(templateStyleOf(BUILTIN_TEMPLATES[2])).toBe("Minimal");
+    for (const template of BUILTIN_TEMPLATES) {
+      expect(templateLayoutOf(template)).toBe("Single column");
+    }
+  });
+
+  it("templateStyleOf falls back to Other; templateLayoutOf detects two columns (arch #15)", () => {
+    expect(
+      templateStyleOf({ id: "x1", name: "Bespoke", description: "", html: "" }),
+    ).toBe("Other");
+    const twoCol = (html: string): BuilderTemplate => ({
+      id: "x2",
+      name: "TwoCol",
+      description: "",
+      html,
+    });
+    expect(
+      templateLayoutOf(twoCol("<div style='grid-template-columns: 1fr 2fr'></div>")),
+    ).toBe("Two column");
+    expect(templateLayoutOf(twoCol("<div class='sidebar'></div>"))).toBe("Two column");
+    expect(templateLayoutOf(twoCol("<div style='columns: 2'></div>"))).toBe("Two column");
+  });
+});
+
+describe("analyzeResume", () => {
+  it("scores a complete resume high and counts measurable bullets", () => {
+    const analysis = analyzeResume(sampleBuilderState());
+    expect(analysis.score).toBeGreaterThanOrEqual(80);
+    const measurable = analysis.checks.find((c) => c.id === "measurable");
+    expect(measurable?.detail).toBe("2 of 2 bullets include a number or metric");
+    expect(analysis.weakest).toBeNull();
+  });
+
+  it("scores an empty resume 0 and names the weakest check", () => {
+    const analysis = analyzeResume(emptyBuilderState());
+    expect(analysis.score).toBe(0);
+    expect(analysis.checks.length).toBeGreaterThan(0);
+    expect(analysis.checks.every((c) => !c.passed)).toBe(true);
+    expect(analysis.weakest?.id).toBe("contact");
+  });
+
+  it("counts keyword coverage from a pasted job description", () => {
+    const jd = "We need a Java engineer with Spring Boot and Kafka experience, plus Azure and PostgreSQL.";
+    const analysis = analyzeResume(sampleBuilderState(), jd);
+    const keywords = analysis.checks.find((c) => c.id === "keywords");
+    expect(keywords).toBeDefined();
+    expect(keywords?.passed).toBe(true);
+    expect(keywords?.detail).toContain("job keywords appear");
+    expect(keywordsFromJobDescription(jd)).toContain("spring");
+  });
+
+  it("omits the keyword check when no job description is pasted", () => {
+    const analysis = analyzeResume(sampleBuilderState());
+    expect(analysis.checks.find((c) => c.id === "keywords")).toBeUndefined();
+  });
+});
+
+describe("DesignerPanel", () => {
+  function renderPanel() {
+    const onDesignChange = vi.fn();
+    const onToggleSection = vi.fn();
+    render(
+      <DesignerPanel
+        design={DEFAULT_DESIGN}
+        onDesignChange={onDesignChange}
+        visibleSections={{
+          contact: true,
+          summary: true,
+          experience: true,
+          education: true,
+          skills: true,
+        }}
+        onToggleSection={onToggleSection}
+        onResetDesign={() => {}}
+      />,
+    );
+    return { onDesignChange, onToggleSection };
+  }
+
+  it("changing the font, line-height and accent calls onDesignChange", async () => {
+    const user = userEvent.setup();
+    const { onDesignChange } = renderPanel();
+    await user.selectOptions(screen.getByLabelText("Font"), "serif");
+    expect(onDesignChange).toHaveBeenCalledWith(
+      expect.objectContaining({ font: "serif" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Accent color Teal" }));
+    expect(onDesignChange).toHaveBeenCalledWith(
+      expect.objectContaining({ accent: "#0f766e" }),
+    );
+    const slider = screen.getByLabelText("Line height") as HTMLInputElement;
+    fireEvent.change(slider, { target: { value: "180" } });
+    expect(onDesignChange).toHaveBeenCalledWith(
+      expect.objectContaining({ lineHeight: 1.8 }),
+    );
+  });
+
+  it("sections tab toggles a section and settings tab steps a margin", async () => {
+    const user = userEvent.setup();
+    const { onDesignChange, onToggleSection } = renderPanel();
+    await user.click(screen.getByRole("tab", { name: "Sections" }));
+    await user.click(screen.getByLabelText("Show Skills section"));
+    expect(onToggleSection).toHaveBeenCalledWith("skills");
+    await user.click(screen.getByRole("tab", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "Increase Top margin" }));
+    expect(onDesignChange).toHaveBeenCalledWith(
+      expect.objectContaining({ margins: expect.objectContaining({ top: 36 }) }),
+    );
+  });
+});
+
+describe("TemplateLibraryModal", () => {
+  function renderModal() {
+    const onSelect = vi.fn();
+    const onUse = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <TemplateLibraryModal
+        templates={TEMPLATES}
+        state={sampleBuilderState()}
+        selectedId={null}
+        onSelect={onSelect}
+        onUse={onUse}
+        onClose={onClose}
+      />,
+    );
+    return { onSelect, onUse, onClose };
+  }
+
+  it("filters by search and style, and the commit is disabled until a template is picked", async () => {
+    const user = userEvent.setup();
+    const { onSelect, onUse } = renderModal();
+    expect(screen.getByRole("button", { name: "Use Template" })).toBeDisabled();
+    await user.type(screen.getByLabelText("Search templates"), "classic");
+    expect(
+      screen.getByRole("button", { name: "Select Classic template" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Select Modern template" }),
+    ).not.toBeInTheDocument();
+    await user.clear(screen.getByLabelText("Search templates"));
+    await user.click(screen.getByRole("button", { name: "Minimal" }));
+    expect(
+      screen.queryByRole("button", { name: "Select Modern template" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Select Minimal template" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Select Minimal template" }));
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "minimal" }));
+    // Commit stays disabled until the parent records the selection.
+    expect(screen.getByRole("button", { name: "Use Template" })).toBeDisabled();
+    expect(onUse).not.toHaveBeenCalled();
+  });
+
+  it("shows the selected template's live preview and commits with its name", async () => {
+    const user = userEvent.setup();
+    const onUse = vi.fn();
+    render(
+      <TemplateLibraryModal
+        templates={TEMPLATES}
+        state={sampleBuilderState()}
+        selectedId="classic"
+        onSelect={() => {}}
+        onUse={onUse}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByText("Preview — Classic")).toBeInTheDocument();
+    const commit = screen.getByRole("button", { name: "Use Classic" });
+    expect(commit).not.toBeDisabled();
+    await user.click(commit);
+    expect(onUse).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("AnalyzerPanel", () => {
+  it("renders the score gauge, countable rows and a tip for the weakest check", () => {
+    const state = emptyBuilderState();
+    render(<AnalyzerPanel state={state} targetJd="" onTargetJdChange={() => {}} />);
+    expect(screen.getByRole("img", { name: /Resume score 0 out of 100/ })).toBeInTheDocument();
+    expect(screen.getByText("Contact details complete")).toBeInTheDocument();
+    expect(screen.getByText("Add your name and email")).toBeInTheDocument();
+    expect(screen.getByText(/Tip — fix this first/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Target job description")).toBeInTheDocument();
+  });
+
+  it("shows the keyword row once a job description is pasted", () => {
+    const jd = "Java Spring Boot Kafka Azure PostgreSQL engineer";
+    render(
+      <AnalyzerPanel state={sampleBuilderState()} targetJd={jd} onTargetJdChange={() => {}} />,
+    );
+    expect(screen.getByText("Job keywords covered")).toBeInTheDocument();
+    expect(screen.getByText(/job keywords appear/)).toBeInTheDocument();
+  });
+});
+
+describe("matchJobDescription", () => {
+  const state = sampleBuilderState();
+
+  it("scores 100 when every job keyword appears in the resume", () => {
+    const match = matchJobDescription(
+      state,
+      "Java Spring Boot Kafka Azure PostgreSQL engineer",
+    );
+    expect(match.score).toBe(100);
+    expect(match.totalKeywords).toBe(7);
+    expect(match.matchedKeywords).toBe(7);
+    expect(match.missingKeywords).toEqual([]);
+    expect(match.skills.every((row) => row.status === "matched")).toBe(true);
+  });
+
+  it("scores from keyword coverage and labels Hard / Soft + matched / missing", () => {
+    const match = matchJobDescription(
+      state,
+      "Java Spring Boot Rust Kubernetes leadership",
+    );
+    // boot, java, spring hit; kubernetes, leadership, rust miss → 3/6 = 50.
+    expect(match.score).toBe(50);
+    expect(match.totalKeywords).toBe(6);
+    expect(match.matchedKeywords).toBe(3);
+    expect(match.missingKeywords).toEqual([
+      "kubernetes",
+      "leadership",
+      "rust",
+    ]);
+    const byKeyword = new Map(match.skills.map((row) => [row.keyword, row]));
+    expect(byKeyword.get("java")).toEqual({ keyword: "java", type: "Hard Skill", status: "matched" });
+    expect(byKeyword.get("rust")).toEqual({ keyword: "rust", type: "Hard Skill", status: "missing" });
+    expect(byKeyword.get("leadership")).toEqual({ keyword: "leadership", type: "Soft Skill", status: "missing" });
+    // Matched rows first, then alphabetical within each group.
+    expect(match.skills.map((row) => row.keyword)).toEqual([
+      "boot",
+      "java",
+      "spring",
+      "kubernetes",
+      "leadership",
+      "rust",
+    ]);
+  });
+
+  it("returns a null score when the job description has no keywords", () => {
+    const match = matchJobDescription(state, "We are");
+    expect(match.score).toBeNull();
+    expect(match.totalKeywords).toBe(0);
+    expect(match.skills).toEqual([]);
+  });
+
+  it("caps the skills table at 12 rows", () => {
+    const match = matchJobDescription(
+      state,
+      "alpha beta gamma delta epsilon zeta theta iota kappa lambda omicron sigma upsilon",
+    );
+    expect(match.totalKeywords).toBe(13);
+    expect(match.skills).toHaveLength(12);
+  });
+});
+
+describe("builder documents list helpers", () => {
+  const docs = normalizeBuilderDocuments([
+    {
+      id: "doc-1",
+      title: "Modern resume",
+      templateId: "modern",
+      updatedAt: "2026-11-17T10:00:00Z",
+      createdAt: "2026-11-10T10:00:00Z",
+      state: sampleBuilderState(),
+    },
+    {
+      id: "doc-2",
+      title: "Classic resume",
+      templateId: "classic",
+      updatedAt: "2026-11-16T10:00:00Z",
+      createdAt: "2026-11-09T10:00:00Z",
+      state: sampleBuilderState(),
+    },
+    {
+      id: "doc-3",
+      title: "Data Analyst",
+      templateId: "minimal",
+      updatedAt: "2026-11-15T10:00:00Z",
+      createdAt: "2026-11-08T10:00:00Z",
+      state: sampleBuilderState(),
+    },
+  ]);
+
+  it("normalises a bare array and a {documents: [...]} envelope, and tolerates garbage", () => {
+    expect(normalizeBuilderDocuments(docs)).toHaveLength(3);
+    expect(
+      normalizeBuilderDocuments({ documents: docs.slice(0, 1) }),
+    ).toHaveLength(1);
+    expect(normalizeBuilderDocuments(null)).toEqual([]);
+    expect(normalizeBuilderDocuments({})).toEqual([]);
+  });
+
+  it("filters by title, case-insensitively; an empty query returns everything", () => {
+    expect(filterBuilderDocuments(docs, "modern")).toHaveLength(1);
+    expect(filterBuilderDocuments(docs, "RESUME")).toHaveLength(2);
+    expect(filterBuilderDocuments(docs, "  ")).toHaveLength(3);
+    expect(filterBuilderDocuments(docs, "nope")).toHaveLength(0);
+  });
+
+  it("sorts most-recent-first by default and A–Z by title", () => {
+    const shuffled = [docs[2], docs[0], docs[1]];
+    expect(sortBuilderDocuments(shuffled, "recent").map((d) => d.id)).toEqual([
+      "doc-1",
+      "doc-2",
+      "doc-3",
+    ]);
+    expect(sortBuilderDocuments(shuffled, "title").map((d) => d.title)).toEqual([
+      "Classic resume",
+      "Data Analyst",
+      "Modern resume",
+    ]);
+  });
+});
+
+describe("ResumeHome", () => {
+  const docs = normalizeBuilderDocuments([
+    {
+      id: "doc-1",
+      title: "Modern resume",
+      templateId: "modern",
+      updatedAt: "2026-11-17T10:00:00Z",
+      createdAt: "2026-11-10T10:00:00Z",
+      state: sampleBuilderState(),
+    },
+    {
+      id: "doc-2",
+      title: "Classic resume",
+      templateId: "classic",
+      updatedAt: "2026-11-16T10:00:00Z",
+      createdAt: "2026-11-09T10:00:00Z",
+      state: sampleBuilderState(),
+    },
+    {
+      id: "doc-3",
+      title: "Data Analyst",
+      templateId: "minimal",
+      updatedAt: "2026-11-15T10:00:00Z",
+      createdAt: "2026-11-08T10:00:00Z",
+      state: sampleBuilderState(),
+    },
+  ]);
+
+  function renderHome(overrides: Partial<Parameters<typeof ResumeHome>[0]> = {}) {
+    const handlers = {
+      onNew: vi.fn(),
+      onFromJobDescription: vi.fn(),
+      onFromTemplate: vi.fn(),
+      onImport: vi.fn(),
+      onOpen: vi.fn(),
+      onMatchJob: vi.fn(),
+      ...overrides,
+    };
+    render(
+      <ResumeHome documents={docs} loading={false} error={null} {...handlers} />,
+    );
+    return handlers;
+  }
+
+  const titles = () =>
+    screen.getAllByTestId("builder-doc-title").map((el) => el.textContent);
+
+  it("renders the action cards, the import link and Recent Resumes — including the New Cover Letter card", () => {
+    renderHome();
+    expect(screen.getByRole("button", { name: /New Resume/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Start from job description/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Start from template/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /New Cover Letter/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Import it/ })).toBeInTheDocument();
+    expect(screen.getByText("Recent Resumes")).toBeInTheDocument();
+    // Most recent first by default.
+    expect(titles()).toEqual(["Modern resume", "Classic resume", "Data Analyst"]);
+    expect(screen.getByText("Edited: 11/17/2026")).toBeInTheDocument();
+  });
+
+  it("search filters the list and sort reorders it by title", async () => {
+    const user = userEvent.setup();
+    renderHome();
+    await user.type(screen.getByLabelText("Search resumes"), "classic");
+    expect(titles()).toEqual(["Classic resume"]);
+    await user.clear(screen.getByLabelText("Search resumes"));
+    await user.selectOptions(screen.getByLabelText("Sort resumes"), "title");
+    expect(titles()).toEqual(["Classic resume", "Data Analyst", "Modern resume"]);
+  });
+
+  it("opening a resume and Match a job call the right handlers", async () => {
+    const user = userEvent.setup();
+    const handlers = renderHome();
+    await user.click(screen.getAllByRole("button", { name: "Match a job" })[0]);
+    expect(handlers.onMatchJob).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "doc-1" }),
+    );
+    await user.click(screen.getAllByTestId("builder-doc-title")[1]);
+    expect(handlers.onOpen).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "doc-2" }),
+    );
+  });
+
+  it("shows the empty state with a New Resume button when there are no resumes", () => {
+    render(
+      <ResumeHome
+        documents={[]}
+        loading={false}
+        error={null}
+        onNew={vi.fn()}
+        onFromJobDescription={vi.fn()}
+        onFromTemplate={vi.fn()}
+        onImport={vi.fn()}
+        onOpen={vi.fn()}
+        onMatchJob={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("No resumes yet")).toBeInTheDocument();
+    expect(screen.queryByTestId("builder-doc-title")).not.toBeInTheDocument();
+  });
+});
+
+describe("QuickTourModal", () => {
+  it("renders nothing when closed", () => {
+    const { container } = render(<QuickTourModal open={false} onClose={() => {}} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("shows the welcome card, then steps through, and Skip / Done close it", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<QuickTourModal open onClose={onClose} />);
+    expect(screen.getByText("Ready to Improve Your Resume!")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start Quick Tour" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Start Quick Tour" }));
+    expect(screen.getByText("Step 1 of 4")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Step 2 of 4")).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Skip the Tour" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("JobMatcherPanel", () => {
+  const JOBS_PAGE = {
+    content: [
+      {
+        id: "job-1",
+        title: "Senior Java Engineer",
+        company: "Acme",
+        location: "Reston, VA",
+        workType: "FULL_TIME",
+        salaryMin: 120000,
+        salaryMax: 160000,
+        currency: "USD",
+        sponsorsH1b: true,
+        skills: ["Java", "Spring Boot"],
+        summary: "Build Java services.",
+        role: "ENGINEERING",
+        postedAt: "2026-11-17T00:00:00Z",
+        source: "SEED",
+        sourceUrl: null,
+      },
+    ],
+    page: 0,
+    size: 5,
+    totalElements: 1,
+    totalPages: 1,
+  };
+
+  function renderMatcher(targetJd = "", onTargetJdChange = vi.fn()) {
+    vi.stubGlobal(
+      "fetch",
+      mockFetch((url) => {
+        if (url.startsWith("/api/jobs")) return jsonResponse(JOBS_PAGE);
+        return jsonResponse({ message: "not found" }, 404);
+      }),
+    );
+    render(
+      <JobMatcherPanel
+        state={sampleBuilderState()}
+        targetJd={targetJd}
+        onTargetJdChange={onTargetJdChange}
+      />,
+      { wrapper },
+    );
+    return onTargetJdChange;
+  }
+
+  it("prompts for a job description when there is no score yet", () => {
+    renderMatcher();
+    expect(
+      screen.getByText(/Paste a job description above/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Match score/ })).not.toBeInTheDocument();
+  });
+
+  it("shows the gauge and the skills table once a job description is pasted", () => {
+    renderMatcher("Java Spring Boot Kafka Azure PostgreSQL engineer");
+    expect(
+      screen.getByRole("img", { name: "Match score 100 percent" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("7 of 7 job keywords appear in your resume.")).toBeInTheDocument();
+    expect(screen.getByText("Skills")).toBeInTheDocument();
+    // A matched hard skill and its status are shown, not invented.
+    expect(screen.getByText("java")).toBeInTheDocument();
+    // "boot" is Hard now: it is a word of the multi-word tech term "spring boot".
+    expect(screen.getAllByText("Hard Skill")).toHaveLength(6);
+    expect(screen.getAllByText("Soft Skill")).toHaveLength(1);
+    expect(screen.getAllByText("Matched")).toHaveLength(7);
+  });
+
+  it("shows the missing rows and the missing-keywords hint for a partial match", () => {
+    renderMatcher("Java Spring Boot Rust Kubernetes leadership");
+    expect(
+      screen.getByRole("img", { name: "Match score 50 percent" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("3 of 6 job keywords appear in your resume.")).toBeInTheDocument();
+    expect(screen.getByText("leadership")).toBeInTheDocument();
+    expect(screen.getAllByText("Soft Skill")).toHaveLength(1);
+    expect(screen.getAllByText("Hard Skill")).toHaveLength(5);
+    expect(screen.getAllByText("Matched")).toHaveLength(3);
+    expect(screen.getAllByText("Missing")).toHaveLength(3);
+    expect(screen.getByText(/Missing keywords to add/)).toBeInTheDocument();
+  });
+
+  it("picking a job from search fills the job description", async () => {
+    const user = userEvent.setup();
+    const onTargetJdChange = renderMatcher();
+    await user.type(screen.getByLabelText("Search titles or companies"), "Java");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /Senior Java Engineer/ }),
+      ).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: /Senior Java Engineer/ }));
+    expect(onTargetJdChange).toHaveBeenCalledWith(
+      "Senior Java Engineer at Acme\nBuild Java services.\nSkills: Java, Spring Boot",
+    );
+  });
+});
+
+describe("content section toggles", () => {
+  function stubBuilderPage() {
+    window.localStorage.setItem(BUILDER_TOUR_SEEN_KEY, "1");
+    vi.stubGlobal(
+      "fetch",
+      mockFetch((url, init) => {
+        if (url === "/api/resume-builder/templates") return jsonResponse(TEMPLATES);
+        if (
+          url === "/api/resume-builder/documents" &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return jsonResponse([]);
+        }
+        if (url === "/api/resume-builder/documents" && init?.method === "POST") {
+          return jsonResponse({ ...PARSED_DOC, id: "doc-1", templateId: "modern" }, 201);
+        }
+        return jsonResponse({ message: "not found" }, 404);
+      }),
+    );
+  }
+
+  it("add-entry opens the section, and unchecking a section hides it from the preview", async () => {
+    const user = userEvent.setup();
+    stubBuilderPage();
+    render(<ResumeBuilderPage />, { wrapper });
+
+    await user.click(screen.getByRole("button", { name: /Start from template/ }));
+    await waitFor(() =>
+      expect(screen.getByText("Choose a template")).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: "Select Modern template" }));
+    await user.click(screen.getByRole("button", { name: "Use Modern" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Add experience" })).toBeInTheDocument(),
+    );
+
+    // The header + adds an entry and opens the (collapsed) section.
+    await user.click(screen.getByRole("button", { name: "Add experience" }));
+    expect(screen.getByLabelText("Job title")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Job title"), "Staff Engineer");
+    const preview = screen.getByTestId("resume-preview") as HTMLIFrameElement;
+    expect(preview.getAttribute("srcDoc")).toContain("Staff Engineer");
+
+    // Uncheck the section: it is muted and hidden from the preview —
+    // content AND heading (B-1: no orphan <h2> left behind).
+    await user.click(screen.getByLabelText("Include Experience section"));
+    expect(preview.getAttribute("srcDoc")).not.toContain("Staff Engineer");
+    expect(preview.getAttribute("srcDoc")).not.toContain("<h2>Experience</h2>");
+    // Re-check it: the entry and its heading are back in the preview.
+    await user.click(screen.getByLabelText("Include Experience section"));
+    expect(preview.getAttribute("srcDoc")).toContain("Staff Engineer");
+    expect(preview.getAttribute("srcDoc")).toContain("<h2>Experience</h2>");
+  });
+});
+
+describe("containsKeyword (B-3 regression)", () => {
+  it("matches whole tokens, not substrings", () => {
+    expect(containsKeyword("JavaScript and React", "java")).toBe(false);
+    expect(containsKeyword("Java developer", "java")).toBe(true);
+    expect(containsKeyword("reaction time", "react")).toBe(false);
+    expect(containsKeyword("React engineer", "react")).toBe(true);
+    expect(containsKeyword("trust me", "rust")).toBe(false);
+    expect(containsKeyword("Rust engineer", "rust")).toBe(true);
+    expect(containsKeyword("going to the store", "go")).toBe(false);
+    expect(containsKeyword("Go developer", "go")).toBe(true);
+  });
+
+  it("matches keywords ending in a non-word character (c#, c++)", () => {
+    expect(containsKeyword("C# developer", "c#")).toBe(true);
+    expect(containsKeyword("C++ and C#", "c++")).toBe(true);
+    expect(containsKeyword("C#/.NET stack", "c#")).toBe(true);
+    expect(containsKeyword("", "java")).toBe(false);
+    expect(containsKeyword("Java developer", "")).toBe(false);
+  });
+});
+
+describe("keywordsFromJobDescription short tech terms (B-2 regression)", () => {
+  it("keeps aws, sql, api and git instead of dropping them", () => {
+    expect(
+      keywordsFromJobDescription(
+        "We need AWS, SQL, API design and Git experience for this role.",
+      ),
+    ).toEqual(["api", "aws", "design", "git", "need", "sql"]);
+  });
+
+  it("keeps c# and .net (as net) as keywords", () => {
+    expect(keywordsFromJobDescription("C# and .NET developer")).toEqual([
+      "c#",
+      "developer",
+      "net",
+    ]);
+  });
+
+  it("keeps single-letter languages c and r, and node.js (arch #6)", () => {
+    expect(keywordsFromJobDescription("C developer with R and Node.js")).toEqual([
+      "c",
+      "developer",
+      "node.js",
+      "r",
+    ]);
+  });
+
+  it("keyword c does not match the C in C# / C++ (N-16)", () => {
+    // "+" and "#" are non-word characters, so the usual (?!\w) boundary
+    // passes after "C" in "C++"/"C#" — the guard excludes them.
+    expect(containsKeyword("C++ programming", "c")).toBe(false);
+    expect(containsKeyword("C# developer", "c")).toBe(false);
+    expect(containsKeyword("C programming", "c")).toBe(true);
+    // But c# and c++ still match as exact keywords.
+    expect(containsKeyword("C++ developer", "c++")).toBe(true);
+    expect(containsKeyword("C# developer", "c#")).toBe(true);
+  });
+
+  it("single-letter keywords do not match CS or R&D (N-18, N-19)", () => {
+    // "c" + "s?" would match the token "CS" (Computer Science) — a
+    // resume with "B.S. in CS" has no C. Single-character forms take
+    // no plural.
+    expect(containsKeyword("CS degree from State", "c")).toBe(false);
+    expect(containsKeyword("B.S. in CS", "c")).toBe(false);
+    expect(containsKeyword("C programming", "c")).toBe(true);
+    // "&" is a non-word boundary, so "r" would match the "R" in "R&D".
+    expect(containsKeyword("R&D engineer", "r")).toBe(false);
+    expect(containsKeyword("R&D team", "r")).toBe(false);
+    expect(containsKeyword("R programming", "r")).toBe(true);
+    // But a genuine C mention still counts ("C/C++" contains C).
+    expect(containsKeyword("C/C++ developer", "c")).toBe(true);
+  });
+
+  it("drops singular/plural junk words symmetric with the stopwords (arch #5)", () => {
+    // "years"/"day"/"role" were already stopwords; their other forms
+    // ("year"/"days"/"roles") and "jobs" must not become keywords either.
+    const keywords = keywordsFromJobDescription(
+      "1 year of experience, 2 days a week, senior roles, many jobs available.",
+    );
+    expect(keywords).not.toContain("year");
+    expect(keywords).not.toContain("days");
+    expect(keywords).not.toContain("roles");
+    expect(keywords).not.toContain("jobs");
+    expect(keywords).not.toContain("candidates");
+    expect(keywords).not.toContain("teams");
+  });
+});
+
+describe("containsKeyword SQL-family compounds (arch #7)", () => {
+  it("keyword sql matches MySQL/PostgreSQL/NoSQL/SQLite, not the reverse", () => {
+    expect(containsKeyword("MySQL and PostgreSQL", "sql")).toBe(true);
+    expect(containsKeyword("SQLite database", "sql")).toBe(true);
+    expect(containsKeyword("NoSQL store", "sql")).toBe(true);
+    expect(containsKeyword("MSSQL Server", "sql")).toBe(true);
+    // The reverse does not hold: a JD asking for MySQL specifically
+    // wants MySQL, so a generic "sql" resume does not match it.
+    expect(containsKeyword("SQL queries", "mysql")).toBe(false);
+    expect(containsKeyword("SQL queries", "postgresql")).toBe(false);
+  });
+});
+
+describe("matchJobDescription whole-token matching (B-3 regression)", () => {
+  it("does not match 'java' against a JavaScript-only resume", () => {
+    const state: ResumeBuilderState = {
+      ...sampleBuilderState(),
+      skills: ["JavaScript", "React"],
+      summary: "Frontend engineer working in JavaScript and React.",
+      experience: [],
+    };
+    const match = matchJobDescription(
+      state,
+      "Looking for a Java developer with Spring experience.",
+    );
+    // Keywords are developer, java, spring — none of them is in the resume.
+    expect(match.totalKeywords).toBe(3);
+    expect(match.matchedKeywords).toBe(0);
+    expect(match.score).toBe(0);
+    expect(match.skills.find((row) => row.keyword === "java")?.status).toBe(
+      "missing",
+    );
+  });
+
+  it("still matches real whole-word keywords (Spring Boot)", () => {
+    const match = matchJobDescription(sampleBuilderState(), "Spring Boot developer");
+    expect(match.skills.find((row) => row.keyword === "spring")?.status).toBe(
+      "matched",
+    );
+    expect(match.skills.find((row) => row.keyword === "boot")?.status).toBe(
+      "matched",
+    );
+  });
+
+  it("classifies multi-word tech terms by their words (M-4)", () => {
+    const match = matchJobDescription(
+      sampleBuilderState(),
+      "Machine learning and Power BI experience",
+    );
+    // "machine" and "learning" come from the multi-word term "machine learning";
+    // "power" comes from "power bi" — all Hard, not Soft.
+    expect(match.skills.find((row) => row.keyword === "machine")?.type).toBe(
+      "Hard Skill",
+    );
+    expect(match.skills.find((row) => row.keyword === "learning")?.type).toBe(
+      "Hard Skill",
+    );
+    expect(match.skills.find((row) => row.keyword === "power")?.type).toBe(
+      "Hard Skill",
+    );
+  });
+});
+
+describe("BuilderMenu", () => {
+  function renderMenu(duplicateDisabled = false) {
+    const handlers = {
+      onImport: vi.fn(),
+      onDuplicate: vi.fn(),
+      onQuickTour: vi.fn(),
+      onBackToResumes: vi.fn(),
+    };
+    render(<BuilderMenu duplicateDisabled={duplicateDisabled} {...handlers} />);
+    return handlers;
+  }
+
+  it("fires each item's handler and closes the menu", async () => {
+    const user = userEvent.setup();
+    const handlers = renderMenu();
+    await user.click(screen.getByRole("button", { name: "Menu" }));
+    await user.click(screen.getByRole("menuitem", { name: "Import resume" }));
+    expect(handlers.onImport).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Menu" }));
+    await user.click(screen.getByRole("menuitem", { name: "Duplicate this resume" }));
+    expect(handlers.onDuplicate).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "Menu" }));
+    await user.click(screen.getByRole("menuitem", { name: "Quick Tour" }));
+    expect(handlers.onQuickTour).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "Menu" }));
+    await user.click(screen.getByRole("menuitem", { name: "Back to All Resumes" }));
+    expect(handlers.onBackToResumes).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables Duplicate when there is nothing to copy and closes on Escape", async () => {
+    const user = userEvent.setup();
+    const handlers = renderMenu(true);
+    await user.click(screen.getByRole("button", { name: "Menu" }));
+    const duplicate = screen.getByRole("menuitem", { name: "Duplicate this resume" });
+    expect(duplicate).toBeDisabled();
+    await user.click(duplicate);
+    expect(handlers.onDuplicate).not.toHaveBeenCalled();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("has no Delete or LinkedIn item", async () => {
+    const user = userEvent.setup();
+    renderMenu();
+    await user.click(screen.getByRole("button", { name: "Menu" }));
+    expect(screen.queryByRole("menuitem", { name: /Delete/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /LinkedIn/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("menuitem")).toHaveLength(4);
+  });
+});
+
+describe("JobMatcherPanel jobs fetching (M-1, M-2)", () => {
+  const JOBS_PAGE = {
+    content: [
+      {
+        id: "job-1",
+        title: "Senior Java Engineer",
+        company: "Acme",
+        location: "Reston, VA",
+        workType: "FULL_TIME",
+        salaryMin: 120000,
+        salaryMax: 160000,
+        currency: "USD",
+        sponsorsH1b: true,
+        skills: ["Java", "Spring Boot"],
+        summary: "Build Java services.",
+        role: "ENGINEERING",
+        postedAt: "2026-11-17T00:00:00Z",
+        source: "SEED",
+        sourceUrl: null,
+      },
+    ],
+    page: 0,
+    size: 5,
+    totalElements: 1,
+    totalPages: 1,
+  };
+
+  function stubJobs() {
+    const fetchMock = mockFetch((url) => {
+      if (url.startsWith("/api/jobs")) return jsonResponse(JOBS_PAGE);
+      return jsonResponse({ message: "not found" }, 404);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("does not fetch jobs until the user types a query (M-1)", async () => {
+    const fetchMock = stubJobs();
+    render(
+      <JobMatcherPanel
+        state={sampleBuilderState()}
+        targetJd=""
+        onTargetJdChange={() => {}}
+      />,
+      { wrapper },
+    );
+    // Let any mount effects settle.
+    await waitFor(() => expect(screen.getByLabelText("Search titles or companies")).toBeInTheDocument());
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/jobs"),
+      expect.anything(),
+    );
+  });
+
+  it("debounces the search: one request for a whole typed query (M-2)", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubJobs();
+    render(
+      <JobMatcherPanel
+        state={sampleBuilderState()}
+        targetJd=""
+        onTargetJdChange={() => {}}
+      />,
+      { wrapper },
+    );
+    await user.type(screen.getByLabelText("Search titles or companies"), "Java");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /Senior Java Engineer/ }),
+      ).toBeInTheDocument(),
+    );
+    const jobCalls = fetchMock.mock.calls.filter(([url]) =>
+      (url as string).startsWith("/api/jobs"),
+    );
+    expect(jobCalls).toHaveLength(1);
+    expect(jobCalls[0][0]).toContain("query=Java");
+  });
+});
+
+describe("page-level minors (M-3, M-5, M-6)", () => {
+  function stubPage() {
+    window.localStorage.setItem(BUILDER_TOUR_SEEN_KEY, "1");
+    const fetchMock = mockFetch((url, init) => {
+      if (url === "/api/resume-builder/templates") return jsonResponse(TEMPLATES);
+      if (
+        url === "/api/resume-builder/documents" &&
+        (!init?.method || init.method === "GET")
+      ) {
+        return jsonResponse([]);
+      }
+      if (url === "/api/resume-builder/documents" && init?.method === "POST") {
+        return jsonResponse({ ...PARSED_DOC, id: "doc-1", templateId: "modern" }, 201);
+      }
+      if (url === "/api/resume-builder/documents/doc-1") {
+        // ?documentId= load: a document with NO template (M-6).
+        return jsonResponse({ ...PARSED_DOC, id: "doc-1", templateId: null });
+      }
+      return jsonResponse({ message: "not found" }, 404);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("New Resume opens the editor without creating a backend document (M-3)", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubPage();
+    render(<ResumeBuilderPage />, { wrapper });
+    await user.click(screen.getAllByRole("button", { name: /New Resume/ })[0]);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Export PDF" })).toBeInTheDocument(),
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/resume-builder/documents",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(screen.getByText("Template: Modern")).toBeInTheDocument();
+  });
+
+  it("Duplicate is enabled when only a contact field (email) is filled (M-5)", async () => {
+    const user = userEvent.setup();
+    stubPage();
+    render(<ResumeBuilderPage />, { wrapper });
+    await user.click(screen.getByRole("button", { name: /Start from template/ }));
+    await waitFor(() =>
+      expect(screen.getByText("Choose a template")).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: "Select Modern template" }));
+    await user.click(screen.getByRole("button", { name: "Use Modern" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Email")).toBeInTheDocument(),
+    );
+    await user.type(screen.getByLabelText("Email"), "alex@example.com");
+    await user.click(screen.getByRole("button", { name: "Menu" }));
+    expect(
+      screen.getByRole("menuitem", { name: "Duplicate this resume" }),
+    ).not.toBeDisabled();
+  });
+
+  it("?documentId= load with no template opens the editor with the Modern fallback (M-6)", async () => {
+    stubPage();
+    navMock.params = new URLSearchParams("documentId=doc-1");
+    render(<ResumeBuilderPage />, { wrapper });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Export PDF" })).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("Choose a template")).not.toBeInTheDocument();
+    expect(screen.getByText("Template: Modern")).toBeInTheDocument();
+  });
+});
+
+describe("Quester re-test follow-ups (N-1..N-4)", () => {
+  it("hides headings for wrapped and uppercase headings too (N-1)", () => {
+    const custom: BuilderTemplate = {
+      id: "custom",
+      name: "Custom",
+      description: "test template",
+      html: `<!doctype html><html><body><h2>Summary</h2><p>{{summary}}</p><h2>EXPERIENCE</h2><section>{{experienceHtml}}</section><h2>Skills</h2><div class="skills-list">{{skillsHtml}}</div></body></html>`,
+    };
+    const hidden = renderTemplateHtml(custom, sampleBuilderState(), {
+      hideSections: ["experience", "skills"],
+    });
+    expect(hidden).not.toContain("EXPERIENCE");
+    expect(hidden).not.toContain("<h2>Skills</h2>");
+    expect(hidden).not.toContain("skills-list");
+    expect(hidden).not.toContain("<section>");
+    expect(hidden).toContain("<h2>Summary</h2>");
+    expect(hidden).toContain("Software engineer with 8 years");
+  });
+
+  it("keeps ci/cd as a keyword and drops slash junk (N-2)", () => {
+    expect(keywordsFromJobDescription("CI/CD pipeline engineer")).toEqual([
+      "ci/cd",
+      "engineer",
+      "pipeline",
+    ]);
+    expect(
+      keywordsFromJobDescription("Remote and/or hybrid work"),
+    ).not.toContain("and/or");
+  });
+
+  it("keeps 'bi' from Power BI via TECH_WORDS (N-3)", () => {
+    const keywords = keywordsFromJobDescription(
+      "Machine learning and Power BI experience",
+    );
+    expect(keywords).toContain("bi");
+    expect(keywords).toContain("machine");
+    expect(keywords).toContain("learning");
+    expect(keywords).toContain("power");
+  });
+
+  it("matches plurals in both directions (N-4)", () => {
+    expect(containsKeyword("REST APIs and GraphQL", "api")).toBe(true);
+    expect(containsKeyword("API experience", "apis")).toBe(true);
+    expect(containsKeyword("REST services", "service")).toBe(true);
+    expect(containsKeyword("testing the app", "test")).toBe(false);
+  });
+
+  it("matches 'api' against a resume listing REST APIs (N-4)", () => {
+    const state: ResumeBuilderState = {
+      ...sampleBuilderState(),
+      skills: ["REST APIs", "GraphQL"],
+      summary: "Backend engineer.",
+      experience: [],
+    };
+    const match = matchJobDescription(state, "Looking for API experience.");
+    expect(match.skills.find((row) => row.keyword === "api")?.status).toBe(
+      "matched",
+    );
+    expect(match.score).toBe(100);
+  });
+});
+
+describe("containsKeyword singular fallback + -es plurals (N-5, N-6)", () => {
+  it("does not let short acronyms fall back to a colliding singular (N-5)", () => {
+    // "css" must not match "CS" (Computer Science), "ios" must not match
+    // "io", "aws" must not match "aw" — the singular fallback is only for
+    // words longer than 3 chars.
+    expect(containsKeyword("CS degree from State", "css")).toBe(false);
+    expect(containsKeyword("io streams", "ios")).toBe(false);
+    expect(containsKeyword("aw shucks", "aws")).toBe(false);
+    // The intended plurals still work for longer words.
+    expect(containsKeyword("API experience", "apis")).toBe(true);
+    expect(containsKeyword("REST services", "service")).toBe(true);
+    expect(containsKeyword("REST APIs", "api")).toBe(true);
+  });
+
+  it("matches -es plurals in both directions (N-6)", () => {
+    expect(containsKeyword("classes in Java", "class")).toBe(true);
+    expect(containsKeyword("Java class", "classes")).toBe(true);
+    expect(containsKeyword("status updates", "statuses")).toBe(true);
+    expect(containsKeyword("statuses page", "status")).toBe(true);
+    // But a word that does not take -es does not gain a false plural.
+    expect(containsKeyword("testing the app", "test")).toBe(false);
+  });
+});
+
+describe("containsKeyword singular words ending in s (N-7, N-8)", () => {
+  it("does not strip a singular word ending in s down to a nonsense stem (N-7)", () => {
+    // "status", "class", "boss", "pass", "glass" are singular — stripping
+    // one "s" gives "statu"/"clas"/"bos"/"pas"/"glas", which must not match.
+    expect(containsKeyword("statu", "status")).toBe(false);
+    expect(containsKeyword("clas", "class")).toBe(false);
+    expect(containsKeyword("Bos and colleagues", "boss")).toBe(false);
+    expect(containsKeyword("pas the salt", "pass")).toBe(false);
+    expect(containsKeyword("glas", "glass")).toBe(false);
+    // NOTE (N-13): the ss/us branch now tries both forms, so "classes"
+    // also generates "classe" (the single-"s" strip) — that is the price
+    // of "houses" matching "house". "classe"/"statuse" never occur in
+    // real text, so matching them is harmless. Pinned (arch #10): the
+    // trade-off is enforced, not just described.
+    expect(containsKeyword("classe", "classes")).toBe(true);
+    expect(containsKeyword("statuse", "statuses")).toBe(true);
+    // The real forms still match both ways.
+    expect(containsKeyword("status report", "status")).toBe(true);
+    expect(containsKeyword("statuses page", "status")).toBe(true);
+    expect(containsKeyword("class project", "class")).toBe(true);
+    expect(containsKeyword("classes in Java", "class")).toBe(true);
+  });
+
+  it("matches 3-char -es stems in both directions (N-8)", () => {
+    // The -es form is not gated by length: "box" (3 chars) must match "boxes".
+    expect(containsKeyword("boxes of cables", "box")).toBe(true);
+    expect(containsKeyword("box of cables", "boxes")).toBe(true);
+    expect(containsKeyword("buses and trains", "bus")).toBe(true);
+    expect(containsKeyword("bus stop", "buses")).toBe(true);
+    // The N-5 gate still holds for short acronyms.
+    expect(containsKeyword("CS degree from State", "css")).toBe(false);
+  });
+});
+
+describe("containsKeyword o-stem -es plurals (N-9)", () => {
+  it("matches o-stem -es plurals in both directions (N-9)", () => {
+    expect(containsKeyword("tomatoes in the garden", "tomato")).toBe(true);
+    expect(containsKeyword("tomato soup", "tomatoes")).toBe(true);
+    expect(containsKeyword("potatoes in the garden", "potato")).toBe(true);
+    expect(containsKeyword("potato soup", "potatoes")).toBe(true);
+    expect(containsKeyword("heroes of the story", "hero")).toBe(true);
+    expect(containsKeyword("hero of the story", "heroes")).toBe(true);
+    expect(containsKeyword("echoes in the hall", "echo")).toBe(true);
+    expect(containsKeyword("echo in the hall", "echoes")).toBe(true);
+    // NOTE (N-10): the o-stem rule now tries both forms, so "tomatoes"
+    // also generates "tomatoe" (the single-"s" strip) — that is the
+    // price of "canoes" matching "canoe". "tomatoe" never occurs in
+    // real text, so matching it is harmless. Pinned (arch #10): the
+    // trade-off is enforced, not just described.
+    expect(containsKeyword("tomatoe", "tomatoes")).toBe(true);
+    expect(containsKeyword("heroe", "heroes")).toBe(true);
+  });
+
+  it("does not let the o-stem rule turn verbs into their base form (N-9)", () => {
+    // "go" is the Go language, not a verb — it must not gain "goes",
+    // and "goes"/"does" must not strip to "go"/"do".
+    expect(containsKeyword("goes above and beyond", "go")).toBe(false);
+    expect(containsKeyword("go developer", "goes")).toBe(false);
+    expect(containsKeyword("do the work", "does")).toBe(false);
+  });
+});
+
+describe("containsKeyword e-word plurals ending in es (N-10, N-11)", () => {
+  it("matches e-word plurals by stripping one s, not es (N-10)", () => {
+    // "shoes" is a regular plural of "shoe", not an -es plural of "sho".
+    expect(containsKeyword("shoe store", "shoes")).toBe(true);
+    expect(containsKeyword("canoe trip", "canoes")).toBe(true);
+    expect(containsKeyword("oboe player", "oboes")).toBe(true);
+    expect(containsKeyword("dose of medicine", "doses")).toBe(true);
+    expect(containsKeyword("case study", "cases")).toBe(true);
+    // The truncated stems must not match real words. "dos" (DOS the OS)
+    // is not generated, so "doses" does not match a DOS resume.
+    expect(containsKeyword("DOS operating system", "doses")).toBe(false);
+    // NOTE: "cano" IS generated as a form (the stem of "canoes"), so a
+    // resume naming a colleague "Cano" would match a JD keyword "canoes".
+    // That is accepted: "canoes" as a JD keyword is practically
+    // impossible, and dropping the stem would break "tomatoes" → "tomato".
+    // The true -es plurals still work.
+    expect(containsKeyword("tomato soup", "tomatoes")).toBe(true);
+    expect(containsKeyword("hero of the story", "heroes")).toBe(true);
+    expect(containsKeyword("class project", "classes")).toBe(true);
+    expect(containsKeyword("bus stop", "buses")).toBe(true);
+  });
+
+  it("pushes nothing for a 2-char o-stem verb (N-11)", () => {
+    // "does"/"goes" must not manufacture "doe"/"goe".
+    expect(containsKeyword("doe a deer, a female deer", "does")).toBe(false);
+    expect(containsKeyword("goe to the store", "goes")).toBe(false);
+    // The length guard for "go" still holds.
+    expect(containsKeyword("goes above and beyond", "go")).toBe(false);
+  });
+});
+
+describe("containsKeyword -use words and 2-char o-stem nouns (N-13, N-14)", () => {
+  it("matches -use/-ouse plurals by stripping one s, not es (N-13)", () => {
+    // "houses" is a regular plural of "house", not an -es plural of "hous".
+    expect(containsKeyword("house for sale", "houses")).toBe(true);
+    expect(containsKeyword("mouse pad", "mouses")).toBe(true);
+    expect(containsKeyword("spouse and kids", "spouses")).toBe(true);
+    expect(containsKeyword("reuse the code", "reuses")).toBe(true);
+    expect(containsKeyword("excuse the delay", "excuses")).toBe(true);
+    // The true -es plurals with ss/us stems still work.
+    expect(containsKeyword("bus stop", "buses")).toBe(true);
+    expect(containsKeyword("status page", "statuses")).toBe(true);
+    expect(containsKeyword("class project", "classes")).toBe(true);
+  });
+
+  it("matches 2-char o-stem nouns, only blocking do/go (N-14)", () => {
+    // "toes"/"foes"/"woes" are real nouns, not verbs — they must match.
+    expect(containsKeyword("toe injury", "toes")).toBe(true);
+    expect(containsKeyword("foe of the realm", "foes")).toBe(true);
+    expect(containsKeyword("woe is me", "woes")).toBe(true);
+    // But the verb block still holds.
+    expect(containsKeyword("doe a deer, a female deer", "does")).toBe(false);
+    expect(containsKeyword("goe to the store", "goes")).toBe(false);
+    expect(containsKeyword("do the work", "does")).toBe(false);
+  });
+});
+
+describe("analyzeResume — boundaries (360°)", () => {
+  it("passes the summary check at exactly 40 characters, fails at 39", () => {
+    const ok = emptyBuilderState();
+    ok.summary = "x".repeat(40);
+    expect(analyzeResume(ok).checks.find((c) => c.id === "summary")?.passed).toBe(true);
+    const short = emptyBuilderState();
+    short.summary = "x".repeat(39);
+    const check = analyzeResume(short).checks.find((c) => c.id === "summary");
+    expect(check?.passed).toBe(false);
+    expect(check?.detail).toBe("Summary is 39 characters");
+  });
+
+  it("passes the skills check at exactly 3 skills", () => {
+    const state = emptyBuilderState();
+    state.skills = ["Java", "Kotlin"];
+    expect(analyzeResume(state).checks.find((c) => c.id === "skills")?.passed).toBe(false);
+    state.skills.push("Kafka");
+    expect(analyzeResume(state).checks.find((c) => c.id === "skills")?.passed).toBe(true);
+  });
+
+  it("measurable needs at least half the bullets: 2 of 4 passes, 1 of 3 fails", () => {
+    const half = sampleBuilderState();
+    half.experience[0].bullets = [
+      "Cut latency by 20%.",
+      "Led the team.",
+      "Shipped 12 services.",
+      "Mentored engineers.",
+    ];
+    expect(analyzeResume(half).checks.find((c) => c.id === "measurable")?.passed).toBe(true);
+    const third = sampleBuilderState();
+    third.experience[0].bullets = [
+      "Cut latency by 20%.",
+      "Led the team.",
+      "Mentored engineers.",
+    ];
+    expect(analyzeResume(third).checks.find((c) => c.id === "measurable")?.passed).toBe(false);
+    expect(analyzeResume(third).checks.find((c) => c.id === "measurable")?.detail).toBe(
+      "1 of 3 bullets include a number or metric",
+    );
+  });
+
+  it("a JD of only stopwords yields a failing keyword check with no keywords", () => {
+    const analysis = analyzeResume(sampleBuilderState(), "We are looking for a team to join");
+    const keywords = analysis.checks.find((c) => c.id === "keywords");
+    expect(keywords?.passed).toBe(false);
+    expect(keywords?.detail).toBe("No keywords found in the job description");
+    expect(keywords?.count).toBe(0);
+  });
+
+  it("lists the missing keywords (max 5) in the keyword detail", () => {
+    const analysis = analyzeResume(
+      sampleBuilderState(),
+      "Java Rust Kubernetes Terraform Ansible Prometheus Grafana Helm",
+    );
+    const keywords = analysis.checks.find((c) => c.id === "keywords");
+    expect(keywords?.detail).toMatch(/missing: /);
+    // Missing keywords are alphabetical, first 5 named: ansible is
+    // first, terraform (7th) is not named.
+    expect(keywords?.detail).toMatch(/ansible/);
+    expect(keywords?.detail).not.toMatch(/terraform/);
+    // Only the first 5 missing keywords are named.
+    expect((keywords?.detail.match(/, /g) ?? []).length).toBe(4);
+  });
+
+  it("rounds the score: 5 of 6 checks is 83", () => {
+    // Complete except education: 5/6 pass.
+    const state = sampleBuilderState();
+    state.education = [];
+    expect(analyzeResume(state).score).toBe(83);
+    expect(analyzeResume(state).weakest?.id).toBe("education");
+  });
+
+  it("contact needs both name and email", () => {
+    const nameOnly = emptyBuilderState();
+    nameOnly.contact.fullName = "Alex Morgan";
+    expect(analyzeResume(nameOnly).checks.find((c) => c.id === "contact")?.passed).toBe(false);
+    const emailOnly = emptyBuilderState();
+    emailOnly.contact.email = "alex@example.com";
+    expect(analyzeResume(emailOnly).checks.find((c) => c.id === "contact")?.passed).toBe(false);
+  });
+});
+
+describe("keywordsFromJobDescription / matchJobDescription — boundaries (360°)", () => {
+  it("counts each keyword once no matter how often it repeats, and orders by frequency", () => {
+    const keywords = keywordsFromJobDescription("Java Java Java Spring Spring Kafka");
+    expect(keywords).toEqual(["java", "spring", "kafka"]);
+    const match = matchJobDescription(sampleBuilderState(), "Java Java Java");
+    expect(match.totalKeywords).toBe(1);
+    expect(match.matchedKeywords).toBe(1);
+    expect(match.score).toBe(100);
+  });
+
+  it("respects the limit parameter", () => {
+    const keywords = keywordsFromJobDescription(
+      "alpha beta gamma delta epsilon zeta",
+      2,
+    );
+    expect(keywords).toHaveLength(2);
+  });
+
+  it("returns [] for an empty JD or a JD of only stopwords", () => {
+    expect(keywordsFromJobDescription("")).toEqual([]);
+    expect(keywordsFromJobDescription("   ")).toEqual([]);
+    expect(keywordsFromJobDescription("we are looking for the team")).toEqual([]);
+  });
+
+  it("returns a null score for an empty or whitespace-only JD", () => {
+    expect(matchJobDescription(sampleBuilderState(), "").score).toBeNull();
+    expect(matchJobDescription(sampleBuilderState(), "   ").score).toBeNull();
+    expect(matchJobDescription(sampleBuilderState(), "We are").score).toBeNull();
+  });
+
+  it("rounds the score: 1 of 3 keywords is 33", () => {
+    const match = matchJobDescription(sampleBuilderState(), "Java Rust Kubernetes");
+    expect(match.matchedKeywords).toBe(1);
+    expect(match.totalKeywords).toBe(3);
+    expect(match.score).toBe(33);
+  });
+
+  it("scores 0 against an empty resume, never negative or NaN", () => {
+    const match = matchJobDescription(emptyBuilderState(), "Java Spring Boot Kafka");
+    expect(match.score).toBe(0);
+    expect(match.matchedKeywords).toBe(0);
+    expect(match.missingKeywords.length).toBe(match.totalKeywords);
+  });
+
+  it("classifies a keyword in the resume's own skills list as Hard even if it is not a tech term", () => {
+    const state = sampleBuilderState();
+    state.skills = [...state.skills, "negotiation"];
+    const match = matchJobDescription(state, "negotiation experience");
+    expect(match.skills.find((row) => row.keyword === "negotiation")?.type).toBe("Hard Skill");
+    expect(match.skills.find((row) => row.keyword === "negotiation")?.status).toBe("matched");
+  });
+
+  it("resumeHaystack covers summary, experience, education and skills", () => {
+    const haystack = resumeHaystack(sampleBuilderState());
+    // The haystack is lowercased for matching.
+    expect(haystack).toMatch(/software engineer with 8 years/);
+    expect(haystack).toMatch(/meridian care technologies/);
+    expect(haystack).toMatch(/george mason university/);
+    expect(haystack).toMatch(/postgresql/);
+    // Note: an empty resume yields " " (the title + summary join), not
+    // "" — harmless, since no keyword matches a blank haystack.
+    expect(resumeHaystack(emptyBuilderState())).toBe(" ");
+  });
+});
+
+describe("designToCss / fontStackFor — extras (360°)", () => {
+  it("falls back to the default font stack for an unknown font id", () => {
+    expect(fontStackFor("nope")).toBe(FONT_OPTIONS[0].stack);
+    expect(fontStackFor("serif")).toBe("Georgia, 'Times New Roman', serif");
+    expect(designToCss({ ...DEFAULT_DESIGN, font: "nope" as never })).toContain(
+      FONT_OPTIONS[0].stack,
+    );
+  });
+
+  it("emits right and center header alignment", () => {
+    expect(designToCss({ ...DEFAULT_DESIGN, headerAlign: "right" })).toContain(
+      "text-align: right",
+    );
+    expect(designToCss({ ...DEFAULT_DESIGN, headerAlign: "center" })).toContain(
+      "text-align: center",
+    );
+  });
+
+  it("comma skills layout emits no skills CSS at all", () => {
+    const css = designToCss({ ...DEFAULT_DESIGN, skillsLayout: "comma" });
+    expect(css).not.toContain("skills-list");
+    expect(css).not.toContain("skills-cols");
+  });
+
+  it("list skills layout emits list CSS, not column CSS", () => {
+    const css = designToCss({ ...DEFAULT_DESIGN, skillsLayout: "list" });
+    expect(css).toContain(".skills-list");
+    expect(css).not.toContain("column-count");
+  });
+
+  it("zero margins emit 0px padding and margins clamp only in the panel, not here", () => {
+    const css = designToCss({
+      ...DEFAULT_DESIGN,
+      margins: { top: 0, right: 0, bottom: 0, left: 0 },
+    });
+    expect(css).toContain("padding: 0px 0px 0px 0px");
+  });
+});
+
+describe("renderTemplateHtml — hide-sections extras (360°)", () => {
+  it("hiding summary removes its heading and text, nothing else", () => {
+    const hidden = renderTemplateHtml(BUILTIN_TEMPLATES[0], sampleBuilderState(), {
+      hideSections: ["summary"],
+    });
+    expect(hidden).not.toContain("Software engineer with 8 years");
+    expect(hidden).not.toContain("<h2>Summary</h2>");
+    expect(hidden).toContain("Alex Morgan");
+    expect(hidden).toContain("<h2>Experience</h2>");
+  });
+
+  it("hiding every section leaves only the contact block", () => {
+    const hidden = renderTemplateHtml(BUILTIN_TEMPLATES[0], sampleBuilderState(), {
+      hideSections: ["summary", "experience", "education", "skills"],
+    });
+    expect(hidden).toContain("Alex Morgan");
+    expect(hidden).not.toContain("Meridian Care Technologies");
+    expect(hidden).not.toContain("George Mason University");
+    expect(hidden).not.toContain("Java, Spring Boot");
+    expect(hidden).not.toContain("<h2>");
+  });
+
+  it("escapes script tags in every field", () => {
+    const state = sampleBuilderState();
+    state.summary = "<script>alert(1)</script>";
+    state.skills = ["<img src=x onerror=alert(1)>"];
+    const html = renderTemplateHtml(BUILTIN_TEMPLATES[0], state);
+    expect(html).not.toContain("<script>alert(1)</script>");
+    expect(html).toContain("&lt;script&gt;");
+    expect(html).not.toContain("<img src=x");
+  });
+
+  it("an unknown hideSections entry changes nothing", () => {
+    const html = renderTemplateHtml(BUILTIN_TEMPLATES[0], sampleBuilderState(), {
+      hideSections: ["nope" as never],
+    });
+    expect(html).toContain("Alex Morgan");
+    expect(html).toContain("Java, Spring Boot");
+  });
+});
+
+describe("normalisers — null and garbage input (360°)", () => {
+  it("normalizeBuilderDocument(null) is an empty unsaved document", () => {
+    const doc = normalizeBuilderDocument(null);
+    expect(doc.id).toBeNull();
+    expect(doc.templateId).toBeNull();
+    expect(doc.title).toBeNull();
+    expect(doc.state).toEqual(emptyBuilderState());
+  });
+
+  it("normalizeBuilderTemplates tolerates null and non-arrays", () => {
+    expect(normalizeBuilderTemplates(null)).toEqual([]);
+    expect(normalizeBuilderTemplates({})).toEqual([]);
+    expect(normalizeBuilderTemplates("nope")).toEqual([]);
+  });
+
+  it("normalizeCopilotResponse tolerates null and a bare string bullet list", () => {
+    expect(normalizeCopilotResponse(null)).toEqual({ options: [] });
+    const res = normalizeCopilotResponse({
+      options: [{ angle: "A", bullets: "one\ntwo", ats_keywords: "Java" }],
+    });
+    expect(res.options[0].bullets).toEqual(["one", "two"]);
+    expect(res.options[0].atsKeywords).toEqual(["Java"]);
+    expect(res.options[0].id).toBe("option-0");
+  });
+
+  it("normalizeSaveToProfile accepts the {id, label} shape", () => {
+    expect(normalizeSaveToProfile({ id: "resume-9", label: "Modern resume" })).toEqual({
+      resumeId: "resume-9",
+      label: "Modern resume",
+    });
+    expect(normalizeSaveToProfile(null)).toEqual({ resumeId: "", label: null });
+  });
+
+  it("filenameFromContentDisposition tolerates an unquoted filename", () => {
+    expect(
+      filenameFromContentDisposition("attachment; filename=resume.pdf", "fallback.pdf"),
+    ).toBe("resume.pdf");
+  });
+});
+
+describe("ResumeHome — error, loading and list edge cases (360°)", () => {
+  function renderHomeDocs(
+    documents: Parameters<typeof ResumeHome>[0]["documents"],
+    extra: Partial<Parameters<typeof ResumeHome>[0]> = {},
+  ) {
+    const handlers = {
+      onNew: vi.fn(),
+      onFromJobDescription: vi.fn(),
+      onFromTemplate: vi.fn(),
+      onImport: vi.fn(),
+      onOpen: vi.fn(),
+      onMatchJob: vi.fn(),
+    };
+    render(
+      <ResumeHome
+        documents={documents}
+        loading={false}
+        error={null}
+        {...handlers}
+        {...extra}
+      />,
+    );
+    return handlers;
+  }
+
+  const oneDoc = normalizeBuilderDocuments([
+    {
+      id: "doc-1",
+      title: "Modern resume",
+      templateId: "modern",
+      updatedAt: "2026-11-17T10:00:00Z",
+      createdAt: "2026-11-10T10:00:00Z",
+      state: sampleBuilderState(),
+    },
+  ]);
+
+  it("shows the error alert and the loading line", () => {
+    renderHomeDocs([], { error: "Could not load your resumes." });
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not load your resumes.");
+    const { unmount } = render(
+      <ResumeHome
+        documents={[]}
+        loading
+        error={null}
+        onNew={vi.fn()}
+        onFromJobDescription={vi.fn()}
+        onFromTemplate={vi.fn()}
+        onImport={vi.fn()}
+        onOpen={vi.fn()}
+        onMatchJob={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Loading resumes…")).toBeInTheDocument();
+    unmount();
+  });
+
+  it("search with no match says so, without the New Resume button", async () => {
+    const user = userEvent.setup();
+    renderHomeDocs(oneDoc);
+    await user.type(screen.getByLabelText("Search resumes"), "zzz-no-match");
+    expect(screen.getByText("No resumes match that search")).toBeInTheDocument();
+    expect(screen.getByText("Try a different search term.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "New Resume" })).not.toBeInTheDocument();
+  });
+
+  it("renders duplicate titles as separate cards", () => {
+    const docs = normalizeBuilderDocuments([
+      { id: "doc-1", title: "Same title", templateId: "modern", updatedAt: "2026-11-17T10:00:00Z", createdAt: "2026-11-10T10:00:00Z", state: sampleBuilderState() },
+      { id: "doc-2", title: "Same title", templateId: "classic", updatedAt: "2026-11-16T10:00:00Z", createdAt: "2026-11-09T10:00:00Z", state: sampleBuilderState() },
+    ]);
+    renderHomeDocs(docs);
+    expect(screen.getAllByTestId("builder-doc-title")).toHaveLength(2);
+  });
+
+  it("shows 'Not edited yet' for a missing or invalid updatedAt, and 'Untitled resume' for a blank title", () => {
+    const docs = normalizeBuilderDocuments([
+      { id: "doc-1", title: "   ", templateId: "modern", updatedAt: null, createdAt: null, state: sampleBuilderState() },
+      { id: "doc-2", title: "Dated", templateId: "modern", updatedAt: "not-a-date", createdAt: null, state: sampleBuilderState() },
+    ]);
+    renderHomeDocs(docs);
+    expect(screen.getByText("Untitled resume")).toBeInTheDocument();
+    expect(screen.getAllByText("Not edited yet")).toHaveLength(2);
+  });
+
+  it("the Open button and the Import link call their handlers; every action card fires", async () => {
+    const user = userEvent.setup();
+    const handlers = renderHomeDocs(oneDoc);
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    expect(handlers.onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "doc-1" }));
+    await user.click(screen.getByRole("button", { name: /Import it/ }));
+    expect(handlers.onImport).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: /New Resume/ }));
+    expect(handlers.onNew).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: /Start from job description/ }));
+    expect(handlers.onFromJobDescription).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: /Start from template/ }));
+    expect(handlers.onFromTemplate).toHaveBeenCalledTimes(1);
+  });
+
+  it("the empty-state New Resume button calls onNew", async () => {
+    const user = userEvent.setup();
+    const handlers = renderHomeDocs([]);
+    await user.click(screen.getByRole("button", { name: "New Resume" }));
+    expect(handlers.onNew).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("QuickTourModal — navigation (360°)", () => {
+  it("Back is disabled on step 1 and returns from step 2 to step 1", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<QuickTourModal open onClose={onClose} />);
+    await user.click(screen.getByRole("button", { name: "Start Quick Tour" }));
+    expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Step 2 of 4")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByText("Step 1 of 4")).toBeInTheDocument();
+    expect(screen.getByText("Your resumes, in one place")).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("walks all four step titles and Done closes the tour", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<QuickTourModal open onClose={onClose} />);
+    await user.click(screen.getByRole("button", { name: "Start Quick Tour" }));
+    expect(screen.getByText("Your resumes, in one place")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Edit in Content")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Design it your way")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Check the match")).toBeInTheDocument();
+    expect(screen.getByText("Step 4 of 4")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("Skip the Tour closes from a later step too", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<QuickTourModal open onClose={onClose} />);
+    await user.click(screen.getByRole("button", { name: "Start Quick Tour" }));
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByRole("button", { name: "Skip the Tour" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("a fresh open always starts at the welcome card, not the last step", async () => {
+    const user = userEvent.setup();
+    // The page unmounts the modal on close, so a fresh mount resets the
+    // step — simulate that with a real unmount + remount.
+    const { unmount } = render(<QuickTourModal open onClose={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "Start Quick Tour" }));
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Step 2 of 4")).toBeInTheDocument();
+    unmount();
+    render(<QuickTourModal open onClose={() => {}} />);
+    expect(screen.getByText("Ready to Improve Your Resume!")).toBeInTheDocument();
+    expect(screen.queryByText("Step 2 of 4")).not.toBeInTheDocument();
+  });
+});
+
+describe("DesignerPanel — Location Alignment, Skills Layout, margins (360°)", () => {
+  function renderPanel(design = DEFAULT_DESIGN) {
+    const onDesignChange = vi.fn();
+    const onToggleSection = vi.fn();
+    const onResetDesign = vi.fn();
+    render(
+      <DesignerPanel
+        design={design}
+        onDesignChange={onDesignChange}
+        visibleSections={{
+          contact: true,
+          summary: true,
+          experience: true,
+          education: true,
+          skills: true,
+        }}
+        onToggleSection={onToggleSection}
+        onResetDesign={onResetDesign}
+      />,
+    );
+    return { onDesignChange, onToggleSection, onResetDesign };
+  }
+
+  it("Location alignment Right and Left call onDesignChange", async () => {
+    const user = userEvent.setup();
+    const { onDesignChange } = renderPanel({ ...DEFAULT_DESIGN, locationAlign: "left" });
+    await user.click(
+      within(screen.getByRole("group", { name: "Location alignment" })).getByRole("button", { name: "Right" }),
+    );
+    expect(onDesignChange).toHaveBeenCalledWith(
+      expect.objectContaining({ locationAlign: "right" }),
+    );
+    expect(
+      within(screen.getByRole("group", { name: "Location alignment" })).getByRole("button", { name: "Right" }),
+    ).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("Skills layout List, Columns and Comma call onDesignChange", async () => {
+    const user = userEvent.setup();
+    const { onDesignChange } = renderPanel();
+    await user.click(
+      within(screen.getByRole("group", { name: "Skills layout" })).getByRole("button", { name: "Columns" }),
+    );
+    expect(onDesignChange).toHaveBeenCalledWith(
+      expect.objectContaining({ skillsLayout: "columns" }),
+    );
+    await user.click(
+      within(screen.getByRole("group", { name: "Skills layout" })).getByRole("button", { name: "Comma separated list" }),
+    );
+    expect(onDesignChange).toHaveBeenCalledWith(
+      expect.objectContaining({ skillsLayout: "list" }),
+    );
+  });
+
+  it("Header alignment Center and Right call onDesignChange", async () => {
+    const user = userEvent.setup();
+    const { onDesignChange } = renderPanel();
+    await user.click(
+      within(screen.getByRole("group", { name: "Header alignment" })).getByRole("button", { name: "Center" }),
+    );
+    expect(onDesignChange).toHaveBeenCalledWith(
+      expect.objectContaining({ headerAlign: "center" }),
+    );
+  });
+
+  it("Date format select changes the separator", async () => {
+    const user = userEvent.setup();
+    const { onDesignChange } = renderPanel();
+    await user.selectOptions(screen.getByLabelText("Date format"), " to ");
+    expect(onDesignChange).toHaveBeenCalledWith(
+      expect.objectContaining({ dateSeparator: " to " }),
+    );
+    await user.selectOptions(screen.getByLabelText("Date format"), " — ");
+    expect(onDesignChange).toHaveBeenCalledWith(
+      expect.objectContaining({ dateSeparator: " — " }),
+    );
+  });
+
+  it("Reset to defaults calls onResetDesign", async () => {
+    const user = userEvent.setup();
+    const { onResetDesign } = renderPanel({ ...DEFAULT_DESIGN, font: "serif" });
+    await user.click(screen.getByRole("button", { name: "Reset to defaults" }));
+    expect(onResetDesign).toHaveBeenCalledTimes(1);
+  });
+
+  it("decreasing a 0px margin stays at 0, and typing a margin value applies it", async () => {
+    const user = userEvent.setup();
+    const { onDesignChange } = renderPanel({
+      ...DEFAULT_DESIGN,
+      margins: { top: 0, right: 36, bottom: 32, left: 36 },
+    });
+    await user.click(screen.getByRole("tab", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "Decrease Top margin" }));
+    expect(onDesignChange).toHaveBeenCalledWith(
+      expect.objectContaining({ margins: expect.objectContaining({ top: 0 }) }),
+    );
+    const input = screen.getByLabelText("Right margin in pixels") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "50" } });
+    expect(onDesignChange).toHaveBeenCalledWith(
+      expect.objectContaining({ margins: expect.objectContaining({ right: 50 }) }),
+    );
+  });
+
+  it("every section toggle calls onToggleSection with its id", async () => {
+    const user = userEvent.setup();
+    const { onToggleSection } = renderPanel();
+    await user.click(screen.getByRole("tab", { name: "Sections" }));
+    for (const section of ["Contact", "Summary", "Experience", "Education", "Skills"]) {
+      await user.click(screen.getByLabelText(`Show ${section} section`));
+    }
+    expect(onToggleSection).toHaveBeenCalledTimes(5);
+    for (const id of ["contact", "summary", "experience", "education", "skills"]) {
+      expect(onToggleSection).toHaveBeenCalledWith(id);
+    }
+  });
+
+  it("the preview-only disclaimer is shown", () => {
+    renderPanel();
+    expect(screen.getByText(/Preview only — exports use the template's own styling/)).toBeInTheDocument();
+  });
+});
+
+describe("JobMatcherPanel — jobDescriptionForJob and edge states (360°)", () => {
+  it("builds the JD text from a job, omitting empty parts", () => {
+    expect(
+      jobDescriptionForJob({
+        title: "Senior Java Engineer",
+        company: "Acme",
+        summary: "Build Java services.",
+        skills: ["Java", "Spring Boot"],
+      } as unknown as Job),
+    ).toBe("Senior Java Engineer at Acme\nBuild Java services.\nSkills: Java, Spring Boot");
+    expect(
+      jobDescriptionForJob({
+        title: "Engineer",
+        company: "Acme",
+        summary: "",
+        skills: [],
+      } as unknown as Job),
+    ).toBe("Engineer at Acme");
+  });
+
+  it("a whitespace-only JD shows the paste prompt, not a score", () => {
+    render(
+      <JobMatcherPanel
+        state={sampleBuilderState()}
+        targetJd="   "
+        onTargetJdChange={() => {}}
+      />,
+      { wrapper },
+    );
+    expect(screen.getByText(/Paste a job description above/)).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Match score/ })).not.toBeInTheDocument();
+  });
+
+  it("a JD with no keywords says so instead of scoring 0", () => {
+    render(
+      <JobMatcherPanel
+        state={sampleBuilderState()}
+        targetJd="We are"
+        onTargetJdChange={() => {}}
+      />,
+      { wrapper },
+    );
+    expect(
+      screen.getByText("No keywords found in that job description — try a longer one."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Match score/ })).not.toBeInTheDocument();
+  });
+
+  it("a zero-match JD still renders a 0 percent gauge", () => {
+    render(
+      <JobMatcherPanel
+        state={sampleBuilderState()}
+        targetJd="Rust Kubernetes leadership"
+        onTargetJdChange={() => {}}
+      />,
+      { wrapper },
+    );
+    expect(
+      screen.getByRole("img", { name: "Match score 0 percent" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("0 of 3 job keywords appear in your resume.")).toBeInTheDocument();
+  });
+
+  it("caps the missing-keywords hint at 8 with an ellipsis", () => {
+    render(
+      <JobMatcherPanel
+        state={sampleBuilderState()}
+        targetJd="alpha beta gamma delta epsilon zeta theta iota kappa lambda omicron sigma"
+        onTargetJdChange={() => {}}
+      />,
+      { wrapper },
+    );
+    const hint = screen.getByText(/Missing keywords to add:/);
+    expect(hint.textContent).toMatch(/…$/);
+    // Missing keywords are alphabetical; the 9th (omicron) is cut off.
+    expect(hint.textContent).not.toMatch(/omicron/);
+    expect(hint.textContent).toMatch(/alpha/);
+    expect(hint.textContent).toMatch(/lambda/);
+  });
+
+  it("shows 'Top 12 skills' when the JD has more than 12 keywords", () => {
+    render(
+      <JobMatcherPanel
+        state={sampleBuilderState()}
+        targetJd="alpha beta gamma delta epsilon zeta theta iota kappa lambda omicron sigma upsilon"
+        onTargetJdChange={() => {}}
+      />,
+      { wrapper },
+    );
+    expect(screen.getByText("Top 12 skills")).toBeInTheDocument();
+    expect(screen.getByText("Showing the top 12 of 13 job keywords.")).toBeInTheDocument();
+  });
+
+  it("search with no results says so", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      mockFetch((url) => {
+        if (url.startsWith("/api/jobs"))
+          return jsonResponse({ content: [], page: 0, size: 5, totalElements: 0, totalPages: 0 });
+        return jsonResponse({ message: "not found" }, 404);
+      }),
+    );
+    render(
+      <JobMatcherPanel
+        state={sampleBuilderState()}
+        targetJd=""
+        onTargetJdChange={() => {}}
+      />,
+      { wrapper },
+    );
+    await user.type(screen.getByLabelText("Search titles or companies"), "Zzz");
+    await waitFor(() =>
+      expect(screen.getByText("No jobs match that search.")).toBeInTheDocument(),
+    );
+  });
+
+  it("picking a job clears the search box", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      mockFetch((url) => {
+        if (url.startsWith("/api/jobs"))
+          return jsonResponse({
+            content: [
+              {
+                id: "job-1",
+                title: "Senior Java Engineer",
+                company: "Acme",
+                location: "Reston, VA",
+                workType: "FULL_TIME",
+                salaryMin: 120000,
+                salaryMax: 160000,
+                currency: "USD",
+                sponsorsH1b: true,
+                skills: ["Java", "Spring Boot"],
+                summary: "Build Java services.",
+                role: "ENGINEERING",
+                postedAt: "2026-11-17T00:00:00Z",
+                source: "SEED",
+                sourceUrl: null,
+              },
+            ],
+            page: 0,
+            size: 5,
+            totalElements: 1,
+            totalPages: 1,
+          });
+        return jsonResponse({ message: "not found" }, 404);
+      }),
+    );
+    render(
+      <JobMatcherPanel
+        state={sampleBuilderState()}
+        targetJd=""
+        onTargetJdChange={() => {}}
+      />,
+      { wrapper },
+    );
+    await user.type(screen.getByLabelText("Search titles or companies"), "Java");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Senior Java Engineer/ })).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: /Senior Java Engineer/ }));
+    expect(
+      (screen.getByLabelText("Search titles or companies") as HTMLInputElement).value,
+    ).toBe("");
+  });
+});
+
+describe("BuilderMenu — close behaviours (360°)", () => {
+  it("clicking Menu again closes it, and aria-expanded tracks the state", async () => {
+    const user = userEvent.setup();
+    render(
+      <BuilderMenu
+        duplicateDisabled={false}
+        onImport={() => {}}
+        onDuplicate={() => {}}
+        onQuickTour={() => {}}
+        onBackToResumes={() => {}}
+      />,
+    );
+    const button = screen.getByRole("button", { name: "Menu" });
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    await user.click(button);
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    await user.click(button);
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("the backdrop button closes the menu without firing any action", async () => {
+    const user = userEvent.setup();
+    const onImport = vi.fn();
+    render(
+      <BuilderMenu
+        duplicateDisabled={false}
+        onImport={onImport}
+        onDuplicate={() => {}}
+        onQuickTour={() => {}}
+        onBackToResumes={() => {}}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Menu" }));
+    await user.click(screen.getByRole("button", { name: "Close menu" }));
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(onImport).not.toHaveBeenCalled();
+  });
+});
+
+describe("TemplateLibraryModal — loading and empty states (360°)", () => {
+  it("shows Loading templates… and disables Use while loading", () => {
+    render(
+      <TemplateLibraryModal
+        templates={TEMPLATES}
+        state={sampleBuilderState()}
+        selectedId="modern"
+        onSelect={() => {}}
+        onUse={() => {}}
+        onClose={() => {}}
+        loading
+      />,
+    );
+    expect(screen.getByText("Loading templates…")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Use Modern" })).toBeDisabled();
+  });
+
+  it("shows the no-match message for a search that matches nothing", async () => {
+    const user = userEvent.setup();
+    render(
+      <TemplateLibraryModal
+        templates={TEMPLATES}
+        state={sampleBuilderState()}
+        selectedId={null}
+        onSelect={() => {}}
+        onUse={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    await user.type(screen.getByLabelText("Search templates"), "zzz-no-such-template");
+    expect(screen.getByText(/No templates match those filters/)).toBeInTheDocument();
+  });
+});
+
+describe("page-level iteration 2 — tour show-once, Match a job, Start from JD, Duplicate (360°)", () => {
+  function stubPage2(
+    docs: unknown[] = [],
+    handlers: {
+      postDocument?: (init?: RequestInit) => Response;
+      getDocument?: (id: string) => Response;
+    } = {},
+  ) {
+    window.localStorage.setItem(BUILDER_TOUR_SEEN_KEY, "1");
+    const fetchMock = mockFetch((url, init) => {
+      if (url === "/api/resume-builder/templates") return jsonResponse(TEMPLATES);
+      if (
+        url === "/api/resume-builder/documents" &&
+        (!init?.method || init.method === "GET")
+      ) {
+        return jsonResponse(docs);
+      }
+      if (url === "/api/resume-builder/documents" && init?.method === "POST") {
+        return handlers.postDocument
+          ? handlers.postDocument(init)
+          : jsonResponse({ ...PARSED_DOC, id: "doc-2", templateId: "modern" }, 201);
+      }
+      const docMatch = url.match(/^\/api\/resume-builder\/documents\/([^/?]+)$/);
+      if (docMatch && (!init?.method || init.method === "GET")) {
+        return handlers.getDocument
+          ? handlers.getDocument(docMatch[1])
+          : jsonResponse({ ...PARSED_DOC, id: docMatch[1], templateId: "modern" });
+      }
+      if (url.startsWith("/api/resume-builder/documents/doc-1/export")) {
+        return new Response("%PDF-fake", {
+          status: 200,
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": 'attachment; filename="alex-morgan.pdf"',
+          },
+        });
+      }
+      return jsonResponse({ message: "not found" }, 404);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  const HOME_DOCS = [
+    { ...PARSED_DOC, id: "doc-1", templateId: "modern", title: "Modern resume" },
+  ];
+
+  afterEach(() => {
+    window.localStorage.setItem(BUILDER_TOUR_SEEN_KEY, "1");
+  });
+
+  it("shows the tour on first visit, and closing it sets the seen flag", async () => {
+    const user = userEvent.setup();
+    stubPage2([]);
+    // The stub marks the tour seen; remove the flag AFTER stubbing so
+    // this really is a first visit.
+    window.localStorage.removeItem(BUILDER_TOUR_SEEN_KEY);
+    render(<ResumeBuilderPage />, { wrapper });
+    expect(
+      await screen.findByText("Ready to Improve Your Resume!"),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Skip the Tour" }));
+    expect(window.localStorage.getItem(BUILDER_TOUR_SEEN_KEY)).toBe("1");
+    expect(screen.queryByText("Ready to Improve Your Resume!")).not.toBeInTheDocument();
+    // The home list is still there underneath.
+    expect(screen.getByText("Recent Resumes")).toBeInTheDocument();
+  });
+
+  it("does not show the tour again on a second visit once the flag is set", async () => {
+    stubPage2([]);
+    render(<ResumeBuilderPage />, { wrapper });
+    await waitFor(() =>
+      expect(screen.getByText("Recent Resumes")).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("Ready to Improve Your Resume!")).not.toBeInTheDocument();
+  });
+
+  it("re-opens the tour from the Menu, and closing it keeps the seen flag", async () => {
+    const user = userEvent.setup();
+    stubPage2(HOME_DOCS);
+    render(<ResumeBuilderPage />, { wrapper });
+    await waitFor(() => expect(screen.getByText("Modern resume")).toBeInTheDocument());
+    await user.click(screen.getByTestId("builder-doc-title"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Full name")).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: "Menu" }));
+    await user.click(screen.getByRole("menuitem", { name: "Quick Tour" }));
+    expect(
+      await screen.findByText("Ready to Improve Your Resume!"),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Skip the Tour" }));
+    expect(window.localStorage.getItem(BUILDER_TOUR_SEEN_KEY)).toBe("1");
+    expect(screen.queryByText("Ready to Improve Your Resume!")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Full name")).toBeInTheDocument();
+  });
+
+  it("Match a job from home opens the editor straight on the Job Matcher tab", async () => {
+    const user = userEvent.setup();
+    stubPage2(HOME_DOCS);
+    render(<ResumeBuilderPage />, { wrapper });
+    await waitFor(() => expect(screen.getByText("Modern resume")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Match a job" }));
+    await waitFor(() =>
+      expect(
+        screen.getByText("Compare a Job Description to Your Resume"),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("tab", { name: "Job Matcher" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByText(/Paste a job description above/)).toBeInTheDocument();
+  });
+
+  it("Start from job description: confirm disabled when empty, then JD flows into Job Matcher", async () => {
+    const user = userEvent.setup();
+    stubPage2([]);
+    render(<ResumeBuilderPage />, { wrapper });
+    await user.click(screen.getByRole("button", { name: /Start from job description/ }));
+    expect(
+      await screen.findByText("Start from a job description"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Use this description" }),
+    ).toBeDisabled();
+    await user.type(
+      screen.getByLabelText("Job description"),
+      "Java Spring Boot Kafka engineer with 5 years experience",
+    );
+    await user.click(screen.getByRole("button", { name: "Use this description" }));
+    await waitFor(() =>
+      expect(screen.getByText("Choose a template")).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: "Select Modern template" }));
+    await user.click(screen.getByRole("button", { name: "Use Modern" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Full name")).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("tab", { name: "Job Matcher" }));
+    // The pasted JD scores against the blank resume: 0% match.
+    expect(
+      await screen.findByRole("img", { name: "Match score 0 percent" }),
+    ).toBeInTheDocument();
+  });
+
+  it("Start from job description: Cancel closes the modal without doing anything", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubPage2([]);
+    render(<ResumeBuilderPage />, { wrapper });
+    await user.click(screen.getByRole("button", { name: /Start from job description/ }));
+    expect(
+      await screen.findByText("Start from a job description"),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText("Start from a job description")).not.toBeInTheDocument();
+    expect(screen.queryByText("Choose a template")).not.toBeInTheDocument();
+    expect(screen.getByText("Recent Resumes")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/resume-builder/documents",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("Menu → Duplicate creates a '(copy)' document and switches to it", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubPage2(HOME_DOCS, {
+      postDocument: (init) => {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { title?: string };
+        return jsonResponse(
+          { ...PARSED_DOC, id: "doc-2", templateId: "modern", title: body.title },
+          201,
+        );
+      },
+    });
+    render(<ResumeBuilderPage />, { wrapper });
+    await waitFor(() => expect(screen.getByText("Modern resume")).toBeInTheDocument());
+    await user.click(screen.getByTestId("builder-doc-title"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Full name")).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: "Menu" }));
+    await user.click(screen.getByRole("menuitem", { name: "Duplicate this resume" }));
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText("Document title") as HTMLInputElement).value,
+      ).toBe("Modern resume (copy)"),
+    );
+    const postCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        url === "/api/resume-builder/documents" && (init as RequestInit)?.method === "POST",
+    );
+    expect(postCall).toBeDefined();
+    expect(JSON.parse(String((postCall![1] as RequestInit).body)).title).toBe(
+      "Modern resume (copy)",
+    );
+    expect(navMock.replace).toHaveBeenCalledWith(
+      expect.stringContaining("documentId=doc-2"),
+      expect.anything(),
+    );
+  });
+
+  it("a failed Duplicate reports the backend message and keeps the editor", async () => {
+    const user = userEvent.setup();
+    stubPage2(HOME_DOCS, {
+      postDocument: () => jsonResponse({ message: "Duplicate failed" }, 500),
+    });
+    render(<ResumeBuilderPage />, { wrapper });
+    await waitFor(() => expect(screen.getByText("Modern resume")).toBeInTheDocument());
+    await user.click(screen.getByTestId("builder-doc-title"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Full name")).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: "Menu" }));
+    await user.click(screen.getByRole("menuitem", { name: "Duplicate this resume" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("Duplicate failed"),
+    );
+    expect(screen.getByLabelText("Full name")).toBeInTheDocument();
+    expect(
+      (screen.getByLabelText("Document title") as HTMLInputElement).value,
+    ).toBe("Modern resume");
+  });
+
+  it("?documentId= load failure reports the error and stays on the entry step", async () => {
+    stubPage2([], {
+      getDocument: () => jsonResponse({ message: "Document not found" }, 404),
+    });
+    navMock.params = new URLSearchParams("documentId=doc-404");
+    render(<ResumeBuilderPage />, { wrapper });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Document not found");
+    // Still on the entry step: the upload / build-fresh choice is shown,
+    // not a half-loaded editor.
+    expect(screen.getByText("I have a resume")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Full name")).not.toBeInTheDocument();
+  });
+
+  it("opening a doc then Back to Resumes returns to the home list", async () => {
+    const user = userEvent.setup();
+    stubPage2(HOME_DOCS);
+    render(<ResumeBuilderPage />, { wrapper });
+    await waitFor(() => expect(screen.getByText("Modern resume")).toBeInTheDocument());
+    await user.click(screen.getByTestId("builder-doc-title"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Full name")).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: "Back to Resumes" }));
+    await waitFor(() =>
+      expect(screen.getByText("Recent Resumes")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("Modern resume")).toBeInTheDocument();
   });
 });

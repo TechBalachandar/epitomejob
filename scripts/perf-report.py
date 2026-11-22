@@ -31,7 +31,9 @@ import os
 import sys
 import tempfile
 
-JOURNEYS = ["login", "profile", "jobs", "matches", "tracker", "coach"]
+JOURNEYS = ["login", "profile", "jobs", "matches", "tracker", "coach",
+            "resume-builder", "resume-text", "copilot", "approvals",
+            "interviews", "sponsor-jobs"]
 # Thresholds mirrored from k6/*.js — if a script threshold changes, change
 # the matching entry here too (the report only DISPLAYS them; k6 enforces).
 THRESHOLDS = {
@@ -41,6 +43,12 @@ THRESHOLDS = {
     "matches": "p95 < 500ms, errors < 1%",
     "tracker": "p95 < 500ms, errors < 1%",
     "coach": "p95 < 5000ms, 200 or 503 accepted (no Ollama in CI)",
+    "resume-builder": "p95 < 500ms, errors < 1%",
+    "resume-text": "p95 < 500ms, errors < 1%",
+    "copilot": "p95 < 5000ms, 200/404/502 accepted (no /resume-builder/copilot in agent-brain yet)",
+    "approvals": "p95 < 500ms, errors < 1%",
+    "interviews": "p95 < 500ms, errors < 1%",
+    "sponsor-jobs": "p95 < 500ms, errors < 1%",
 }
 
 
@@ -137,7 +145,7 @@ def fmt(value, decimals=1, suffix=""):
 def render_section(date, k6_dir, lhci_dir, run_url, commit):
     status = read_status(k6_dir)
     lines = [f"## Performance — {date}", ""]
-    lines.append("### k6 API journeys (5 VUs x 30s, gateway :8080)")
+    lines.append("### k6 API journeys (2-5 VUs x 30s, gateway :8080)")
     lines.append("")
     lines.append("| Journey | p95 | Error rate | Checks | Result | Threshold |")
     lines.append("|---|---|---|---|---|---|")
