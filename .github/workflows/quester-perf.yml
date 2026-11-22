@@ -49,6 +49,19 @@ jobs:
           # Full history: the report step runs `git pull --rebase`, which
           # is unreliable on the default shallow (depth-1) checkout.
           fetch-depth: 0
+          # Push fix (Nov 22): main is branch-protected, so the default
+          # GITHUB_TOKEN cannot push the report back. Use the QA_PUSH_PAT
+          # repo secret (classic PAT, repo scope, repo owner) so the push
+          # runs as the owner. Without it the "Commit QA report" step
+          # fails — the exact failure seen on run 44933700702.
+          token: ${{ secrets.QA_PUSH_PAT }}
+
+      - name: Check push token is configured
+        run: |
+          if [ -z "${{ secrets.QA_PUSH_PAT }}" ]; then
+            echo "::error::QA_PUSH_PAT secret is not set. Add a classic PAT with 'repo' scope as repo secret QA_PUSH_PAT so the report job can push to protected main."
+            exit 1
+          fi
 
       - name: Set up Node 22
         uses: actions/setup-node@v4
