@@ -3,14 +3,14 @@
 import { Suspense, useState } from "react";
 import { ApiError, useApplyJob, useMatches, useResumes, useSaveJob } from "@/lib/api";
 import { useSelectedResumeId } from "@/lib/use-selected-resume";
-import { matchSourceLabel } from "@/lib/jobs";
+import { formatPostedAt, formatSalary, matchSourceLabel } from "@/lib/jobs";
 import { toast } from "@/lib/toast-store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { JobSource } from "@/components/job-source";
 import { ResumeSelector } from "@/components/resume-selector";
-import { CheckCircle2, CircleAlert, Save } from "lucide-react";
+import { CheckCircle2, ChevronDown, CircleAlert, Save } from "lucide-react";
 
 function MatchesPageContent() {
   const { data: resumes } = useResumes();
@@ -21,6 +21,9 @@ function MatchesPageContent() {
   const saveJob = useSaveJob();
   const [saved, setSaved] = useState<Set<string>>(new Set());
   const [applied, setApplied] = useState<Set<string>>(new Set());
+  // Expanded job id: click a match card (or View details) to show the full
+  // job — salary, description, skills, H-1B sponsorship, posted date.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   async function handleSave(jobId: string, title: string) {
     try {
@@ -87,8 +90,15 @@ function MatchesPageContent() {
           const job = match.job;
           const isSaved = saved.has(job.id);
           const isApplied = applied.has(job.id);
+          const isExpanded = expandedId === job.id;
+          const salary = formatSalary(job.salaryMin, job.salaryMax);
           return (
-            <Card key={job.id}>
+            <Card
+              key={job.id}
+              className={`cursor-pointer transition-shadow hover:shadow-md ${isExpanded ? "ring-2 ring-indigo-600" : ""}`}
+              onClick={() => setExpandedId(isExpanded ? null : job.id)}
+              aria-expanded={isExpanded}
+            >
               <CardHeader>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -136,7 +146,41 @@ function MatchesPageContent() {
                     </div>
                   </div>
                 )}
-                <div className="flex gap-2">
+                {isExpanded && (
+                  <div
+                    className="flex flex-col gap-3 border-t border-slate-200 pt-4"
+                    data-testid={`job-detail-${job.id}`}
+                  >
+                    <p className="text-sm font-medium text-slate-900">
+                      {salary ? `${salary} ${job.currency}` : "Salary not listed"}
+                    </p>
+                    <p className="text-sm text-slate-600">{job.summary}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {job.skills.map((s) => (
+                        <Badge key={s} variant="outline">{s}</Badge>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {job.sponsorsH1b && <Badge variant="success">Sponsors H-1B</Badge>}
+                      <span className="text-xs text-slate-400">
+                        {job.role} · {formatPostedAt(job.postedAt)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-expanded={isExpanded}
+                    onClick={() => setExpandedId(isExpanded ? null : job.id)}
+                  >
+                    {isExpanded ? "Hide details" : "View details"}
+                    <ChevronDown
+                      className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                      aria-hidden
+                    />
+                  </Button>
                   <Button
                     variant="outline"
                     disabled={isSaved || saveJob.isPending}
