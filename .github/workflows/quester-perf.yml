@@ -73,13 +73,16 @@ jobs:
           docker volume create backend_pgdata || true
           docker volume create backend_rustfsdata || true
 
-      - name: Start API services (postgres, rustfs, backend, agent-brain)
+      - name: Start API services (postgres, rustfs, backend, agent-brain, resume-builder)
         run: |
           # Also starts eureka + temporal via depends_on. Backend and
           # agent-brain Dockerfiles are self-contained multi-stage builds
           # (mvn package / pip install inside the image); no prebuilt jar
           # or venv is needed.
-          docker compose up -d --build postgres rustfs backend agent-brain
+          # resume-builder is required: the resume-builder + copilot k6
+          # journeys call GET /resume-builder/templates in setup(); without
+          # it the gateway returns 502 and both journeys fail in setup.
+          docker compose up -d --build postgres rustfs backend agent-brain resume-builder
 
       - name: Start web services (gateway, web)
         run: |
