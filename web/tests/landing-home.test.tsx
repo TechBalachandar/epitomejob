@@ -218,6 +218,8 @@ describe("Home dashboard", () => {
     render(<HomePage />, { wrapper });
     expect(await screen.findByText("Not set")).toBeInTheDocument();
     expect(screen.queryByText(/days left/i)).toBeNull();
+    expect(document.querySelector(".border-amber-400")).toBeNull();
+    expect(document.querySelector(".border-rose-400")).toBeNull();
   });
 
   it("counts this week's applications against the weekly goal", async () => {

@@ -32,6 +32,8 @@ const JOBS = [
     summary: "Build and own Spring Boot microservices for claims processing.",
     role: "Backend",
     postedAt: "2026-11-10T09:00:00Z",
+    source: "SEED",
+    sourceUrl: null,
   },
   {
     id: "job-2",
@@ -47,6 +49,8 @@ const JOBS = [
     summary: "Design multi-agent workflows for member operations.",
     role: "AI",
     postedAt: "2026-11-11T09:00:00Z",
+    source: "SEED",
+    sourceUrl: null,
   },
 ];
 
@@ -266,9 +270,9 @@ test.describe("W5 dashboard (live data)", () => {
     // Mission Model: /home renders no "Active" state label — an active
     // clock is the plain card, with no urgent (amber) or expired (rose)
     // warning border. Assert the absence of the warning styling.
-    await expect(
-      page.locator(".border-amber-400, .border-rose-400"),
-    ).toHaveCount(0);
+    const clockCard = page.locator("div.rounded-xl:has-text('Your 60-day clock')");
+    await expect(clockCard).toHaveCount(1);
+    await expect(clockCard).not.toHaveClass(/border-amber-400|border-rose-400/);
 
     // Profile completeness comes from the server (60%), not a hardcoded 80.
     await expect(page.getByText("60%")).toBeVisible();
@@ -320,7 +324,9 @@ test.describe("W5 dashboard (live data)", () => {
     await expect(page.getByText(/10\s*days left/)).toBeVisible();
     // Mission Model: /home renders no "Urgent" label or "almost up" copy
     // — an urgent clock is the clock card with the amber warning border.
-    await expect(page.locator(".border-amber-400")).toHaveCount(1);
+    await expect(
+      page.locator("div.border-amber-400:has-text('Your 60-day clock')"),
+    ).toHaveCount(1);
   });
 
   test("390px: dashboard renders without horizontal overflow", async ({
