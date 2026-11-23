@@ -3,7 +3,7 @@ package com.epitomejob.resumebuilder.service
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
-import org.apache.pdfbox.pdmodel.PDDocument
+import org.apache.pdfbox.Loader
 import org.apache.pdfbox.text.PDFTextStripper
 import org.apache.poi.xwpf.usermodel.XWPFDocument
 import org.junit.jupiter.api.Test
@@ -140,7 +140,7 @@ class ExportServiceTest {
     letter.put("summary", "Dear Hiring Manager,\n\nI am excited to apply for the Senior Engineer role.\n\nSincerely,\nAda Lovelace")
     val pdf = service.exportPdf("modern", letter)
     assertThat(String(pdf, 0, 5, StandardCharsets.US_ASCII)).isEqualTo("%PDF-")
-    PDDocument.load(pdf).use { doc ->
+    Loader.loadPDF(pdf).use { doc ->
       val extracted = PDFTextStripper().getText(doc)
       assertThat(extracted).contains("Dear Hiring Manager,", "Sincerely,")
       assertThat(extracted).contains("I am excited to apply for the Senior Engineer role.")
