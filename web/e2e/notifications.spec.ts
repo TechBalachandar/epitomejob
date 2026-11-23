@@ -152,6 +152,20 @@ async function stubDashboardData(page: Page) {
   await page.route("**/api/interviews/sessions", (route) =>
     route.fulfill({ status: 200, json: [] }),
   );
+  // Mission Model: /home also fetches the sponsor-jobs feed and the
+  // builder documents. No jobs / no documents in this fixture — the real
+  // empty shapes — so the requests never hit the real BFF proxy (which
+  // 500s with no backend in e2e). With no jobs and no matches there is
+  // no interview job, so no questions fetch fires.
+  await page.route("**/api/jobs**", (route) =>
+    route.fulfill({
+      status: 200,
+      json: { content: [], page: 0, size: 100, totalElements: 0, totalPages: 1 },
+    }),
+  );
+  await page.route("**/api/resume-builder/documents", (route) =>
+    route.fulfill({ status: 200, json: [] }),
+  );
 }
 
 async function login(page: Page, items: StubNotification[], unreadStart?: number) {

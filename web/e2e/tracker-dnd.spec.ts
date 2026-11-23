@@ -72,6 +72,30 @@ async function stubApi(page: Page) {
   await page.route("**/api/resumes/me", (route) =>
     route.fulfill({ status: 200, json: [] }),
   );
+  // Mission Model: /home also fetches matches, the sponsor-jobs feed,
+  // approvals, interview sessions and the builder documents. This
+  // fixture has none of those — the real empty shapes — so the requests
+  // never hit the real BFF proxy (which 500s with no backend in e2e).
+  // With no jobs and no matches there is no interview job, so no
+  // questions fetch fires.
+  await page.route("**/api/matches/me**", (route) =>
+    route.fulfill({ status: 200, json: [] }),
+  );
+  await page.route("**/api/jobs**", (route) =>
+    route.fulfill({
+      status: 200,
+      json: { content: [], page: 0, size: 100, totalElements: 0, totalPages: 1 },
+    }),
+  );
+  await page.route("**/api/approvals/pending", (route) =>
+    route.fulfill({ status: 200, json: [] }),
+  );
+  await page.route("**/api/interviews/sessions", (route) =>
+    route.fulfill({ status: 200, json: [] }),
+  );
+  await page.route("**/api/resume-builder/documents", (route) =>
+    route.fulfill({ status: 200, json: [] }),
+  );
   // The header bell polls the unread count on every authenticated page.
   await page.route("**/api/notifications/unread-count", (route) =>
     route.fulfill({ status: 200, json: { unreadCount: 0 } }),

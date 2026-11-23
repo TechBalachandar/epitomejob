@@ -122,6 +122,16 @@ async function stubBuilder(page: Page) {
   await page.route("**/api/interviews/sessions", (route) =>
     route.fulfill({ status: 200, json: [] }),
   );
+  // Mission Model: /home also fetches the sponsor-jobs feed. No jobs in
+  // this fixture — the real empty page — so the request never hits the
+  // real BFF proxy (which 500s with no backend in e2e). With no jobs and
+  // no matches there is no interview job, so no questions fetch fires.
+  await page.route("**/api/jobs**", (route) =>
+    route.fulfill({
+      status: 200,
+      json: { content: [], page: 0, size: 100, totalElements: 0, totalPages: 1 },
+    }),
+  );
   // One handler for the whole builder BFF surface, by URL + method.
   await page.route("**/api/resume-builder/**", async (route) => {
     const url = new URL(route.request().url());
@@ -129,6 +139,11 @@ async function stubBuilder(page: Page) {
     const method = route.request().method();
     if (path === "/templates" && method === "GET") {
       return route.fulfill({ status: 200, json: TEMPLATES });
+    }
+    if (path === "/documents" && method === "GET") {
+      // The builder home step lists documents, and /home fetches them
+      // too: no documents yet for this user — the real empty list.
+      return route.fulfill({ status: 200, json: [] });
     }
     if (path === "/parse" && method === "POST") {
       return route.fulfill({ status: 201, json: PARSED_DOC });
@@ -183,24 +198,36 @@ async function gotoViaNav(page: Page, name: string) {
   await page.getByRole("link", { name, exact: true }).first().click();
 }
 
+/** Iteration 2: first visit to the builder shows the Quick Tour modal,
+ * which covers the page — dismiss it before clicking anything. */
+async function dismissTour(page: Page) {
+  await expect(
+    page.getByRole("heading", { name: "Resume Builder", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Skip the Tour" }).first().click();
+}
+
 test.describe("Resume Builder", () => {
   test("entry → upload → template pick → edit → AI options → download", async ({
     page,
   }) => {
     await login(page);
     await gotoViaNav(page, "Resume Builder");
+    await dismissTour(page);
 
-    // Entry: the two cards and the flow subtitle.
+    // Iteration 2: /resume-builder lands on the home step (action cards
+    // + Recent Resumes). "Have a resume already? Import it" opens the
+    // entry step with the upload form already open.
+    await page.getByRole("button", { name: /Have a resume already/ }).click();
     await expect(
       page.getByText(/Upload your resume to start from what you have/),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Upload a resume" }),
+      page.getByRole("button", { name: "Hide upload" }),
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "Build fresh" })).toBeVisible();
 
-    // Upload (stubbed parse) lands on the templates screen.
-    await page.getByRole("button", { name: "Upload a resume" }).click();
+    // Upload (stubbed parse) opens the template library modal.
     await page
       .getByTestId("builder-file-input")
       .setInputFiles({
@@ -209,11 +236,18 @@ test.describe("Resume Builder", () => {
         buffer: Buffer.from("%PDF-fake"),
       });
     await expect(page.getByText("Choose a template")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Modern" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Classic" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Minimal" })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Select Modern template" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Select Classic template" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Select Minimal template" }),
+    ).toBeVisible();
 
     // Template pick → editor, prefilled from the parsed resume.
+    await page.getByRole("button", { name: "Select Modern template" }).click();
     await page.getByRole("button", { name: "Use Modern" }).click();
     await expect(page.getByLabel("Full name")).toBeVisible();
     await expect(page.getByLabel("Full name")).toHaveValue("Alex Morgan");
@@ -266,9 +300,13 @@ test.describe("Resume Builder", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await login(page);
     await gotoViaNav(page, "Resume Builder");
+    await dismissTour(page);
 
-    await page.getByRole("button", { name: "Build fresh" }).click();
+    // Iteration 2: "Start from template" on the home step opens the
+    // template library modal (no entry form in between).
+    await page.getByRole("button", { name: /Start from template/ }).click();
     await expect(page.getByText("Choose a template")).toBeVisible();
+    await page.getByRole("button", { name: "Select Minimal template" }).click();
     await page.getByRole("button", { name: "Use Minimal" }).click();
     await expect(page.getByLabel("Full name")).toBeVisible();
     await page.getByLabel("Full name").fill("Alex Morgan");

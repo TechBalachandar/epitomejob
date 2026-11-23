@@ -7,7 +7,10 @@ import { test, expect, type Page } from "@playwright/test";
 // in-memory session alive) and assert each page renders with no console
 // errors.
 const PAGES = [
-  { nav: "Dashboard", heading: /Good (morning|afternoon|evening)/ },
+  // Mission Model: the post-login dashboard is "Home" (/home) now —
+  // the sidebar has no "Dashboard" link anymore.
+  { nav: "Home", heading: /Good (morning|afternoon|evening)/ },
+  { nav: "Clock", heading: "Your 60 days" },
   { nav: "Profile", heading: "Profile" },
   { nav: "Resumes", heading: "Resumes" },
   { nav: "Jobs", heading: "Jobs" },
@@ -15,6 +18,8 @@ const PAGES = [
   { nav: "Coach", heading: "Coach" },
   { nav: "Approvals", heading: "Approvals" },
   { nav: "Interviews", heading: "Interviews" },
+  { nav: "Cover Letter", heading: "Cover Letter" },
+  { nav: "Offers", heading: "Compare offers" },
   { nav: "Tracker", heading: "Tracker" },
   { nav: "Plans", heading: "Plans" },
   { nav: "Learning", heading: "Learning" },
@@ -390,6 +395,13 @@ async function stubApi(page: Page) {
   // and the smoke test's zero-console-errors assertion fails.
   await page.route("**/api/notifications/unread-count", (route) =>
     route.fulfill({ status: 200, json: { unreadCount: 0 } }),
+  );
+  // --- Mission Model: /home also fetches the builder documents (today's
+  // plan + resume tip of the day). No documents for this user — the real
+  // empty-list shape, not a 404. Without this the request hits the real
+  // BFF proxy, which 500s with no backend in e2e.
+  await page.route("**/api/resume-builder/documents", (route) =>
+    route.fulfill({ status: 200, json: [] }),
   );
   // --- W4 billing stubs (contract §1f): billing off by default ----------
   await page.route("**/api/billing/status", (route) =>
