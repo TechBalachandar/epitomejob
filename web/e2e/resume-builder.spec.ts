@@ -254,6 +254,12 @@ test.describe("Resume Builder", () => {
     await expect(page).toHaveURL(/documentId=doc-1/);
 
     // Edit a field → the live preview re-renders on the keystroke.
+    // Content sections are accordions and only Contact is open by
+    // default (page.tsx: expandedSection starts as "contact"), so the
+    // Summary form is not in the DOM until its header is expanded.
+    // The header toggle's name is "Summary <n> chars"; the anchored
+    // regex keeps it distinct from "Improve summary with AI".
+    await page.getByRole("button", { name: /^Summary/ }).click();
     await page
       .getByRole("textbox", { name: "Summary" })
       .fill("Java engineer, now leading AI work.");
@@ -277,10 +283,12 @@ test.describe("Resume Builder", () => {
     await expect(page.getByText(/still need a real value/)).toBeVisible();
 
     // Download + save-to-profile are present; the PDF download fires.
-    await expect(page.getByRole("button", { name: "Download PDF" })).toBeVisible();
+    // The PDF button is labelled "Export PDF" (page.tsx), not
+    // "Download PDF" — "Download DOCX" is the DOCX button's real label.
+    await expect(page.getByRole("button", { name: "Export PDF" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Download DOCX" })).toBeVisible();
     const download = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Download PDF" }).click();
+    await page.getByRole("button", { name: "Export PDF" }).click();
     expect((await download).suggestedFilename()).toBe("alex-morgan.pdf");
 
     await page.getByRole("button", { name: "Save to profile" }).click();
@@ -314,7 +322,9 @@ test.describe("Resume Builder", () => {
       .getByTestId("resume-preview")
       .getAttribute("srcDoc");
     expect(previewSrc).toContain("Alex Morgan");
-    await expect(page.getByRole("button", { name: "Download PDF" })).toBeVisible();
+    // The PDF button is labelled "Export PDF" (page.tsx) — there is no
+    // "Download PDF" button in the builder.
+    await expect(page.getByRole("button", { name: "Export PDF" })).toBeVisible();
 
     const overflow = await page.evaluate(
       () =>
