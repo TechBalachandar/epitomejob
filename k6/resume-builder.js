@@ -15,15 +15,19 @@
 // template list is empty the run fails loudly in setup() with the reason.
 //
 // Thresholds: p95 < 500ms, error rate < 1%, checks > 99% — same as the
-// other read/write journeys (jobs.js, tracker.js). Load shape: 5 VUs for
-// 30s, 1s think time — latency smoke test, not a load test.
+// other read/write journeys (jobs.js, tracker.js). Load shape: 2 VUs for
+// 30s, 1s think time — latency smoke test, not a load test. 2 VUs (not 5):
+// all VUs share one user/token, and the gateway rate-limits each user to
+// 100 burst + 2/s sustained; 5 VUs x 2 req/iteration (~9 req/s) exhausts the
+// bucket and the journey drowns in 429s (46.71% errors on 2026-11-23 run #12).
+// 2 VUs (~112 requests) fits the token budget, same as copilot/coach.
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { BASE_URL, registerAndLogin, authHeaders, warmupGet } from './lib/common.js';
 
 export const options = {
   scenarios: {
-    resumeBuilder: { executor: 'constant-vus', vus: 5, duration: '30s', gracefulStop: '5s' },
+    resumeBuilder: { executor: 'constant-vus', vus: 2, duration: '30s', gracefulStop: '5s' },
   },
   thresholds: {
     http_req_duration: ['p(95)<500'],
