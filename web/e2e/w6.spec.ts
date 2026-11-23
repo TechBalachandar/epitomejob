@@ -191,6 +191,17 @@ async function stubW6(page: Page, opts: { profilePutStatus?: number } = {}) {
   await page.route("**/api/interviews/sessions", (route) =>
     route.fulfill({ status: 200, json: [] }),
   );
+  // Mission Model: /home also fetches the builder documents (today's
+  // plan + resume tip) and the interview questions for the plan's
+  // interview job (the top match, job-2). No documents; no question bank
+  // in this fixture — the real empty shapes — so neither request hits
+  // the real BFF proxy (which 500s with no backend in e2e).
+  await page.route("**/api/resume-builder/documents", (route) =>
+    route.fulfill({ status: 200, json: [] }),
+  );
+  await page.route("**/api/interviews/questions**", (route) =>
+    route.fulfill({ status: 200, json: [] }),
+  );
   return {
     getLastProfilePut: () => lastProfilePut,
   };

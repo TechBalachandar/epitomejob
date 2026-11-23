@@ -323,4 +323,34 @@ describe("Home dashboard", () => {
       expect(row!.textContent).toContain("100%");
     }
   });
+
+  // E2E contract (Nov 22): /home renders no "Active" / "Urgent" state
+  // label — the clock state is the card's warning border (amber when
+  // urgent, rose when expired, plain when active). These tests pin that
+  // signal, which the dashboard E2E spec asserts.
+  it("active clock (50 days left) carries no urgent/expired warning border", async () => {
+    render(<HomePage />, { wrapper });
+    expect(await screen.findByText("Your 60-day clock")).toBeInTheDocument();
+    expect(screen.getByText("50")).toBeInTheDocument();
+    expect(document.querySelector(".border-amber-400")).toBeNull();
+    expect(document.querySelector(".border-rose-400")).toBeNull();
+  });
+
+  it("urgent clock (10 days left) carries the amber warning border", async () => {
+    mockState.profile = { ...mockState.profile, h1bClockStartDate: daysAgoISO(50) };
+    render(<HomePage />, { wrapper });
+    expect(await screen.findByText("Your 60-day clock")).toBeInTheDocument();
+    expect(screen.getByText("10")).toBeInTheDocument();
+    expect(screen.getByText(/days left/i)).toBeInTheDocument();
+    expect(document.querySelector(".border-amber-400")).not.toBeNull();
+  });
+
+  it("expired clock carries the rose warning border and says days past deadline", async () => {
+    mockState.profile = { ...mockState.profile, h1bClockStartDate: daysAgoISO(70) };
+    render(<HomePage />, { wrapper });
+    expect(await screen.findByText("Your 60-day clock")).toBeInTheDocument();
+    expect(screen.getByText("-10")).toBeInTheDocument();
+    expect(screen.getByText(/days past deadline/i)).toBeInTheDocument();
+    expect(document.querySelector(".border-rose-400")).not.toBeNull();
+  });
 });

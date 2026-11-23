@@ -179,6 +179,24 @@ async function stubDashboard(page: Page, profile: Record<string, unknown>) {
   await page.route("**/api/notifications/unread-count", (route) =>
     route.fulfill({ status: 200, json: { unreadCount: 0 } }),
   );
+  // Mission Model: /home also fetches the sponsor-jobs feed
+  // (?sponsorsH1b=true&size=100), the builder documents (today's plan +
+  // resume tip) and the interview questions for the plan's interview job.
+  // Without these the requests hit the real BFF proxy, which 500s with no
+  // backend in e2e. Jobs are the fixture jobs (posted Nov 10/11, so none
+  // is "new today"); no documents, no questions — the real empty shapes.
+  await page.route("**/api/jobs**", (route) =>
+    route.fulfill({
+      status: 200,
+      json: { content: JOBS, page: 0, size: 100, totalElements: JOBS.length, totalPages: 1 },
+    }),
+  );
+  await page.route("**/api/resume-builder/documents", (route) =>
+    route.fulfill({ status: 200, json: [] }),
+  );
+  await page.route("**/api/interviews/questions**", (route) =>
+    route.fulfill({ status: 200, json: [] }),
+  );
   await page.route("**/api/interviews/sessions", (route) =>
     route.fulfill({
       status: 200,
@@ -245,7 +263,12 @@ test.describe("W5 dashboard (live data)", () => {
     // 60-day clock: started 30 days ago → 30 days left, active.
     await expect(page.getByText(/30\s*days left/)).toBeVisible();
     await expect(page.getByText(/Deadline/)).toBeVisible();
-    await expect(page.getByText("Active", { exact: true })).toBeVisible();
+    // Mission Model: /home renders no "Active" state label — an active
+    // clock is the plain card, with no urgent (amber) or expired (rose)
+    // warning border. Assert the absence of the warning styling.
+    await expect(
+      page.locator(".border-amber-400, .border-rose-400"),
+    ).toHaveCount(0);
 
     // Profile completeness comes from the server (60%), not a hardcoded 80.
     await expect(page.getByText("60%")).toBeVisible();
@@ -295,8 +318,9 @@ test.describe("W5 dashboard (live data)", () => {
   }) => {
     await loginToDashboard(page, baseProfile({ h1bClockStartDate: dateDaysAgo(50) }));
     await expect(page.getByText(/10\s*days left/)).toBeVisible();
-    await expect(page.getByText("Urgent", { exact: true })).toBeVisible();
-    await expect(page.getByText(/almost up/)).toBeVisible();
+    // Mission Model: /home renders no "Urgent" label or "almost up" copy
+    // — an urgent clock is the clock card with the amber warning border.
+    await expect(page.locator(".border-amber-400")).toHaveCount(1);
   });
 
   test("390px: dashboard renders without horizontal overflow", async ({
