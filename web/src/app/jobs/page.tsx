@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError, useApplyJob, useJobs, useResumes, useSaveJob } from "@/lib/api";
 import { formatPostedAt, formatSalary } from "@/lib/jobs";
 import { JobSource } from "@/components/job-source";
@@ -15,9 +15,17 @@ import { Select } from "@/components/ui/select";
 import { Building2, MapPin, Search } from "lucide-react";
 import type { Job } from "@/lib/types";
 
-export default function JobsPage() {
+function JobsPageContent() {
   const router = useRouter();
-  const [query, setQuery] = useState("");
+  const searchParams = useSearchParams();
+  // The header search lands here as /jobs?query=… — pick it up as the
+  // initial query, and keep it in sync if the user searches again from
+  // the header while already on this page.
+  const paramQuery = searchParams.get("query") ?? "";
+  const [query, setQuery] = useState(paramQuery);
+  useEffect(() => {
+    setQuery(paramQuery);
+  }, [paramQuery]);
   const [location, setLocation] = useState("");
   const [workType, setWorkType] = useState("ALL");
   const [source, setSource] = useState("ALL");
@@ -67,57 +75,71 @@ export default function JobsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Jobs</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Jobs</h1>
+        <p className="mt-1 text-base text-slate-600">
           Search, filter, and open a job to see the detail. Saving adds it to
           your tracker; applying always asks for your approval first.
         </p>
       </div>
 
-      <Card>
-        <CardContent className="flex flex-col gap-3 pt-5 sm:flex-row sm:flex-wrap sm:items-center">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
-            <Input
-              className="pl-9"
-              placeholder="Search title, company, or skill…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              aria-label="Search jobs"
-            />
+      <Card className="overflow-hidden">
+        <CardContent className="flex flex-col gap-3 p-4 sm:p-5">
+          <form
+            role="search"
+            className="flex flex-col gap-3 sm:flex-row"
+            onSubmit={(e) => e.preventDefault()}
+          >
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+              <Input
+                className="h-11 pl-9 text-base"
+                placeholder="Search title, company, or skill…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="Search jobs"
+              />
+            </div>
+            <div className="relative sm:w-56">
+              <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+              <Input
+                className="h-11 pl-9 text-base"
+                placeholder="Location, e.g. Reston, VA"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                aria-label="Filter by location"
+              />
+            </div>
+            <Button type="submit" size="lg" className="h-11 shrink-0 px-6">
+              <Search className="h-4 w-4" aria-hidden /> Search
+            </Button>
+          </form>
+          <div className="flex flex-wrap items-center gap-3">
+            <Select value={workType} onChange={(e) => setWorkType(e.target.value)} aria-label="Work type" className="sm:w-40">
+              <option value="ALL">All types</option>
+              <option value="Remote">Remote</option>
+              <option value="Hybrid">Hybrid</option>
+              <option value="Onsite">Onsite</option>
+            </Select>
+            <Select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Job source" className="sm:w-40">
+              <option value="ALL">All sources</option>
+              <option value="LINKEDIN">LinkedIn</option>
+              <option value="INDEED">Indeed</option>
+              <option value="MONSTER">Monster</option>
+              <option value="NAUKRI">Naukri</option>
+              <option value="COMPANY">Company site</option>
+              <option value="ADZUNA">Adzuna</option>
+              <option value="SEED">Seed</option>
+            </Select>
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                checked={sponsorsOnly}
+                onChange={(e) => setSponsorsOnly(e.target.checked)}
+                className="h-4 w-4 accent-brand-600"
+              />
+              Sponsors H-1B
+            </label>
           </div>
-          <Input
-            placeholder="Location, e.g. Reston, VA"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            aria-label="Filter by location"
-            className="sm:w-48"
-          />
-          <Select value={workType} onChange={(e) => setWorkType(e.target.value)} aria-label="Work type" className="sm:w-40">
-            <option value="ALL">All types</option>
-            <option value="Remote">Remote</option>
-            <option value="Hybrid">Hybrid</option>
-            <option value="Onsite">Onsite</option>
-          </Select>
-          <Select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Job source" className="sm:w-40">
-            <option value="ALL">All sources</option>
-            <option value="LINKEDIN">LinkedIn</option>
-            <option value="INDEED">Indeed</option>
-            <option value="MONSTER">Monster</option>
-            <option value="NAUKRI">Naukri</option>
-            <option value="COMPANY">Company site</option>
-            <option value="ADZUNA">Adzuna</option>
-            <option value="SEED">Seed</option>
-          </Select>
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={sponsorsOnly}
-              onChange={(e) => setSponsorsOnly(e.target.checked)}
-              className="h-4 w-4 accent-indigo-600"
-            />
-            Sponsors H-1B
-          </label>
         </CardContent>
       </Card>
 
@@ -128,7 +150,7 @@ export default function JobsPage() {
         </p>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-5">
+      <div className="grid gap-5 lg:grid-cols-5">
         <div className="flex flex-col gap-3 lg:col-span-3">
           {!isLoading && jobs.length === 0 && (
             <p className="text-sm text-slate-500">
@@ -138,7 +160,7 @@ export default function JobsPage() {
           {jobs.map((job) => (
             <Card
               key={job.id}
-              className={`cursor-pointer transition-shadow hover:shadow-md ${selected?.id === job.id ? "ring-2 ring-indigo-600" : ""}`}
+              className={`cursor-pointer transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-lift ${selected?.id === job.id ? "border-brand-300 ring-2 ring-brand-600" : ""}`}
               onClick={() => setPickedId(job.id)}
             >
               <CardHeader className="pb-2">
@@ -158,7 +180,7 @@ export default function JobsPage() {
                 </div>
               </CardHeader>
               <CardContent className="flex flex-wrap items-center gap-2 pt-0">
-                <span className="text-sm font-medium text-slate-900">
+                <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-sm font-semibold text-emerald-700">
                   {formatSalary(job.salaryMin, job.salaryMax)}
                 </span>
                 {job.sponsorsH1b && <Badge variant="success">Sponsors H-1B</Badge>}
@@ -186,13 +208,13 @@ export default function JobsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
-                <p className="text-sm font-medium text-slate-900">
+                <p className="text-base font-semibold text-emerald-700">
                   {(() => {
                     const salary = formatSalary(selected.salaryMin, selected.salaryMax);
                     return salary ? `${salary} ${selected.currency}` : "Salary not listed";
                   })()}
                 </p>
-                <p className="text-sm text-slate-600">{selected.summary}</p>
+                <p className="text-sm leading-relaxed text-slate-600">{selected.summary}</p>
                 <div className="flex flex-wrap gap-2">
                   {selected.skills.map((s) => (
                     <Badge key={s} variant="outline">{s}</Badge>
@@ -248,5 +270,15 @@ export default function JobsPage() {
         />
       )}
     </div>
+  );
+}
+
+// useSearchParams() needs a Suspense boundary so the page still
+// prerenders (Next.js CSR bailout rule for search params).
+export default function JobsPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-slate-500">Loading jobs…</p>}>
+      <JobsPageContent />
+    </Suspense>
   );
 }

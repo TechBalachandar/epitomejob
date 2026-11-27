@@ -243,8 +243,8 @@ function HomePageContent() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">{greetingFor(new Date())}</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">{greetingFor(new Date())}</h1>
+        <p className="mt-1 text-base text-slate-600">
           Here is where your job search stands today.
         </p>
       </div>
@@ -252,19 +252,24 @@ function HomePageContent() {
       {/* Clock hero — front and center, with today's plan. */}
       <Card
         className={cn(
+          "overflow-hidden",
           clock.state === "urgent" && "border-amber-400 bg-amber-50",
           clock.state === "expired" && "border-rose-400 bg-rose-50",
+          clock.state !== "urgent" &&
+            clock.state !== "expired" &&
+            "border-brand-100 bg-gradient-to-br from-brand-50 via-white to-white",
         )}
       >
-        <CardContent className="flex flex-col gap-4 pt-6">
+        <CardContent className="flex flex-col gap-5 pt-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                <Hourglass className="h-4 w-4 text-brand-600" aria-hidden />
                 Your 60-day clock
               </p>
               {clock.state === "not-set" && (
                 <>
-                  <p className="mt-1 text-3xl font-bold text-slate-900">Not set</p>
+                  <p className="mt-2 text-4xl font-extrabold tracking-tight text-slate-900">Not set</p>
                   <p className="mt-1 text-sm text-slate-600">
                     Set your H-1B clock start date to start the 60-day countdown.
                   </p>
@@ -272,9 +277,9 @@ function HomePageContent() {
               )}
               {clock.state !== "not-set" && clock.daysLeft !== null && clock.deadline && (
                 <>
-                  <p className="mt-1 text-3xl font-bold text-slate-900">
+                  <p className="mt-2 text-5xl font-extrabold tabular-nums tracking-tight text-slate-900">
                     {clock.daysLeft}{" "}
-                    <span className="text-base font-medium text-slate-500">
+                    <span className="text-lg font-medium text-slate-500">
                       {clock.state === "expired"
                         ? "days past deadline"
                         : clock.daysLeft === 0
@@ -285,6 +290,28 @@ function HomePageContent() {
                   <p className="mt-1 text-sm text-slate-600">
                     Deadline {formatDeadline(clock.deadline)}
                   </p>
+                  <div
+                    className="mt-3 h-2.5 w-full max-w-md overflow-hidden rounded-full bg-slate-200/80"
+                    role="progressbar"
+                    aria-valuenow={60 - clock.daysLeft}
+                    aria-valuemin={0}
+                    aria-valuemax={60}
+                    aria-label="Days of the 60-day grace period used"
+                  >
+                    <span
+                      className={cn(
+                        "block h-full rounded-full",
+                        clock.state === "expired"
+                          ? "bg-rose-500"
+                          : clock.state === "urgent"
+                            ? "bg-clock-500"
+                            : "bg-brand-600",
+                      )}
+                      style={{
+                        width: `${Math.min(((60 - clock.daysLeft) / 60) * 100, 100)}%`,
+                      }}
+                    />
+                  </div>
                 </>
               )}
             </div>
@@ -314,9 +341,9 @@ function HomePageContent() {
                   <li key={`${item.kind}-${item.jobId ?? item.documentId ?? item.title}`}>
                     <Link
                       href={item.href}
-                      className="flex items-start gap-2 text-sm text-slate-700 hover:text-indigo-700"
+                      className="flex items-start gap-2 text-sm text-slate-700 hover:text-brand-700"
                     >
-                      <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" aria-hidden />
+                      <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" aria-hidden />
                       <span>
                         <span className="font-medium">{item.title}</span>
                         <span className="block text-xs text-slate-500">{item.detail}</span>
@@ -334,7 +361,7 @@ function HomePageContent() {
       <Card>
         <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
           <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-clock-50 text-clock-600">
               <Flame className="h-5 w-5" aria-hidden />
             </span>
             <div>
@@ -376,16 +403,16 @@ function HomePageContent() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {stats.map(({ label, value, sub, icon: Icon, href }) => (
           <Link key={label} href={href}>
-            <Card className="transition-shadow hover:shadow-md">
+            <Card className="transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-lift">
               <CardContent className="flex items-center gap-3 pt-5">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
                   <Icon className="h-5 w-5" aria-hidden />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-xl font-bold text-slate-900">
+                  <span className="block text-2xl font-extrabold tabular-nums tracking-tight text-slate-900">
                     {value ?? "—"}
                   </span>
-                  <span className="block text-xs text-slate-500">{label}</span>
+                  <span className="block text-xs font-medium text-slate-500">{label}</span>
                   {sub && (
                     <span className="block truncate text-xs text-slate-400">{sub}</span>
                   )}
@@ -428,7 +455,7 @@ function HomePageContent() {
                   aria-label="Applications this week against the weekly goal"
                 >
                   <span
-                    className="block h-full rounded-full bg-indigo-600"
+                    className="block h-full rounded-full bg-brand-600"
                     style={{ width: `${Math.min((week.count / week.goal) * 100, 100)}%` }}
                   />
                 </div>
@@ -451,7 +478,7 @@ function HomePageContent() {
                         <span className="flex items-center gap-2">
                           <span className="h-2 w-32 overflow-hidden rounded-full bg-slate-200">
                             <span
-                              className="block h-full rounded-full bg-indigo-600"
+                              className="block h-full rounded-full bg-brand-600"
                               style={{
                                 width: `${funnel.total > 0 ? (count / funnel.total) * 100 : 0}%`,
                               }}
@@ -474,7 +501,7 @@ function HomePageContent() {
                     )}
                   </ul>
                 )}
-                <Link href="/tracker" className="text-sm font-medium text-indigo-600 hover:underline">
+                <Link href="/tracker" className="text-sm font-medium text-brand-600 hover:underline">
                   Open your tracker <ArrowRight className="inline h-4 w-4" aria-hidden />
                 </Link>
               </>
@@ -501,7 +528,7 @@ function HomePageContent() {
                 <ul className="flex flex-col gap-3">
                   {newJobs.map(({ job, score }) => (
                     <li key={job.id} className="flex flex-col gap-1 border-b border-slate-100 pb-3 last:border-0 last:pb-0">
-                      <Link href="/jobs" className="text-sm font-medium text-slate-900 hover:text-indigo-700">
+                      <Link href="/jobs" className="text-sm font-medium text-slate-900 hover:text-brand-700">
                         {job.title} · {job.company}
                       </Link>
                       <span className="text-xs text-slate-500">
@@ -514,13 +541,13 @@ function HomePageContent() {
                 <button
                   type="button"
                   onClick={handleMarkSeen}
-                  className="w-fit text-sm font-medium text-indigo-600 hover:underline"
+                  className="w-fit text-sm font-medium text-brand-600 hover:underline"
                 >
                   Mark these as seen
                 </button>
               </>
             )}
-            <Link href="/jobs" className="text-sm font-medium text-indigo-600 hover:underline">
+            <Link href="/jobs" className="text-sm font-medium text-brand-600 hover:underline">
               Browse all sponsor jobs <ArrowRight className="inline h-4 w-4" aria-hidden />
             </Link>
           </CardContent>
@@ -536,7 +563,7 @@ function HomePageContent() {
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
-          <div className="flex flex-col gap-2 rounded-lg border border-slate-200 p-4">
+          <div className="flex flex-col gap-2 rounded-xl border border-slate-200/80 bg-slate-50 p-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Question of the day
             </p>
@@ -549,7 +576,7 @@ function HomePageContent() {
                     ? ` · for ${plan.interviewJob.title} at ${plan.interviewJob.company}`
                     : ""}
                 </p>
-                <Link href="/interviews" className="text-sm font-medium text-indigo-600 hover:underline">
+                <Link href="/interviews" className="text-sm font-medium text-brand-600 hover:underline">
                   Practice this question <ArrowRight className="inline h-4 w-4" aria-hidden />
                 </Link>
               </>
@@ -560,7 +587,7 @@ function HomePageContent() {
               </p>
             )}
           </div>
-          <div className="flex flex-col gap-2 rounded-lg border border-slate-200 p-4">
+          <div className="flex flex-col gap-2 rounded-xl border border-slate-200/80 bg-slate-50 p-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Resume tip of the day
             </p>
@@ -570,7 +597,7 @@ function HomePageContent() {
                 <p className="text-sm text-slate-600">{dailyTip.detail}</p>
                 <Link
                   href="/resume-builder"
-                  className="text-sm font-medium text-indigo-600 hover:underline"
+                  className="text-sm font-medium text-brand-600 hover:underline"
                 >
                   Fix it in the Resume Builder <ArrowRight className="inline h-4 w-4" aria-hidden />
                 </Link>
@@ -632,9 +659,9 @@ function HomePageContent() {
                   <li key={step.text}>
                     <Link
                       href={step.href}
-                      className="flex items-start gap-2 text-sm text-slate-700 hover:text-indigo-700"
+                      className="flex items-start gap-2 text-sm text-slate-700 hover:text-brand-700"
                     >
-                      <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" aria-hidden />
+                      <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" aria-hidden />
                       {step.text}
                     </Link>
                   </li>
@@ -695,7 +722,7 @@ function HomePageContent() {
                   <li key={match.job.id} className="flex flex-col gap-1.5">
                     <Link href={matchesHref(selectedResumeId)} className="group flex flex-col gap-1.5">
                       <span className="flex items-baseline justify-between gap-2">
-                        <span className="text-sm font-medium text-slate-900 group-hover:text-indigo-700">
+                        <span className="text-sm font-medium text-slate-900 group-hover:text-brand-700">
                           {match.job.title} · {match.job.company}
                         </span>
                         <span className="shrink-0 text-sm font-semibold text-slate-900">
@@ -711,7 +738,7 @@ function HomePageContent() {
                         aria-label={`Match score for ${match.job.title}`}
                       >
                         <span
-                          className="block h-full rounded-full bg-indigo-600"
+                          className="block h-full rounded-full bg-brand-600"
                           style={{ width: `${match.score}%` }}
                         />
                       </span>

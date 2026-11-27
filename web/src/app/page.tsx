@@ -149,17 +149,17 @@ export default function LandingPage() {
   return (
     <div className="flex flex-col">
       {/* Hero */}
-      <section className="border-b border-slate-200 bg-white">
-        <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-14 sm:px-6 lg:grid-cols-2 lg:py-20">
-          <div className="flex flex-col justify-center gap-5">
-            <p className="text-sm font-semibold uppercase tracking-wide text-indigo-600">
+      <section className="border-b border-slate-200/80 bg-gradient-to-b from-brand-50 via-white to-white">
+        <div className="mx-auto grid w-full max-w-6xl items-center gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:py-24">
+          <div className="flex flex-col justify-center gap-6">
+            <p className="w-fit rounded-full border border-brand-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-brand-700 shadow-sm">
               AI career assistance for laid-off H-1B workers
             </p>
-            <h1 className="text-4xl font-bold leading-tight text-slate-900 sm:text-5xl">
+            <h1 className="text-4xl font-extrabold leading-[1.08] tracking-tight text-slate-900 sm:text-5xl lg:text-[3.4rem]">
               Laid off on H-1B? You have 60 days. We help you land a
               sponsoring job before the clock runs out.
             </h1>
-            <p className="text-lg text-slate-600">
+            <p className="max-w-xl text-lg leading-relaxed text-slate-600">
               EpitomeJob finds the employers that sponsor H-1B visas,
               tailors your resume to each job, and prepares you for the
               interview — one plan, one day at a time.
@@ -167,20 +167,20 @@ export default function LandingPage() {
             <div className="flex flex-wrap gap-3">
               <Link
                 href="/register"
-                className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-5 py-3 text-sm font-semibold text-white hover:bg-indigo-700"
+                className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-6 py-3.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-brand-700 hover:shadow-lg active:scale-[0.98]"
               >
                 Start your 60 days <ArrowRight className="h-4 w-4" aria-hidden />
               </Link>
               <Link
                 href="/register"
-                className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50"
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-6 py-3.5 text-sm font-semibold text-slate-900 shadow-sm transition-all hover:border-brand-600 hover:text-brand-700 active:scale-[0.98]"
               >
                 See sponsor jobs
               </Link>
             </div>
             <p className="text-sm text-slate-500">
               Already have an account?{" "}
-              <Link href="/login" className="font-medium text-indigo-600 hover:underline">
+              <Link href="/login" className="font-semibold text-brand-600 hover:underline">
                 Sign in
               </Link>
             </p>
@@ -189,19 +189,20 @@ export default function LandingPage() {
           {/* Illustrative countdown — labelled as an example, never personal. */}
           <div
             className={cn(
-              "flex flex-col justify-center gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-6",
+              "flex flex-col justify-center gap-5 rounded-2xl border border-brand-100 bg-white p-7 shadow-lift",
             )}
             aria-label="Example 60-day countdown"
           >
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <Clock className="h-4 w-4 text-clock-600" aria-hidden />
               Example — not your clock
             </p>
-            <p className="text-5xl font-bold text-slate-900">
+            <p className="text-6xl font-extrabold tabular-nums tracking-tight text-slate-900">
               {daysLeft}{" "}
               <span className="text-xl font-medium text-slate-500">days left</span>
             </p>
             <div
-              className="h-3 w-full overflow-hidden rounded-full bg-slate-200"
+              className="h-3 w-full overflow-hidden rounded-full bg-slate-100"
               role="progressbar"
               aria-valuenow={daysUsed}
               aria-valuemin={0}
@@ -209,11 +210,11 @@ export default function LandingPage() {
               aria-label="Example: days of the 60-day grace period used"
             >
               <span
-                className="block h-full rounded-full bg-indigo-600"
+                className="block h-full rounded-full bg-gradient-to-r from-brand-600 to-clock-500"
                 style={{ width: `${(daysUsed / 60) * 100}%` }}
               />
             </div>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm leading-relaxed text-slate-600">
               A job seeker who started {daysUsed} days ago has {daysLeft} days
               left of the 60-day grace period. Your clock starts when you set
               your date — and your plan is built from your real jobs and
@@ -221,7 +222,7 @@ export default function LandingPage() {
             </p>
             <Link
               href="/register"
-              className="inline-flex w-fit items-center gap-2 text-sm font-semibold text-indigo-600 hover:underline"
+              className="inline-flex w-fit items-center gap-2 text-sm font-semibold text-brand-600 hover:underline"
             >
               Set your clock <ArrowRight className="h-4 w-4" aria-hidden />
             </Link>
@@ -230,22 +231,22 @@ export default function LandingPage() {
       </section>
 
       {/* How it works */}
-      <section id="how-it-works" className="border-b border-slate-200 bg-slate-50">
-        <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6">
-          <h2 className="text-2xl font-bold text-slate-900">How it works</h2>
-          <p className="mt-1 text-sm text-slate-500">
+      <section id="how-it-works" className="border-b border-slate-200/80 bg-surface">
+        <div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6">
+          <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">How it works</h2>
+          <p className="mt-2 text-base text-slate-600">
             Four steps, in order. Nothing is sent to an employer without your approval.
           </p>
-          <ol className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <ol className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {STEPS.map((step) => (
-              <li key={step.n} className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-5">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white">
+              <li key={step.n} className="group flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-card transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-lift">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-600 text-sm font-bold text-white shadow-sm ring-4 ring-brand-50">
                   {step.n}
                 </span>
-                <Link href={step.href} className="text-base font-semibold text-slate-900 hover:text-indigo-700">
+                <Link href={step.href} className="text-base font-bold text-slate-900 transition-colors group-hover:text-brand-700">
                   {step.title}
                 </Link>
-                <p className="text-sm text-slate-600">{step.text}</p>
+                <p className="text-sm leading-relaxed text-slate-600">{step.text}</p>
               </li>
             ))}
           </ol>
@@ -253,26 +254,26 @@ export default function LandingPage() {
       </section>
 
       {/* What you get */}
-      <section id="features" className="border-b border-slate-200 bg-white">
-        <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6">
-          <h2 className="text-2xl font-bold text-slate-900">What you get</h2>
-          <p className="mt-1 text-sm text-slate-500">
+      <section id="features" className="border-b border-slate-200/80 bg-white">
+        <div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6">
+          <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">What you get</h2>
+          <p className="mt-2 text-base text-slate-600">
             One system for the whole search — not a resume tool bolted onto a job board.
           </p>
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map(({ icon: Icon, title, text, href }) => (
               <Link
                 key={title}
                 href={href}
-                className="group flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-5 transition-shadow hover:shadow-md"
+                className="group flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-card transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-lift"
               >
-                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600 transition-colors group-hover:bg-brand-100">
                   <Icon className="h-5 w-5" aria-hidden />
                 </span>
-                <span className="text-base font-semibold text-slate-900 group-hover:text-indigo-700">
+                <span className="text-base font-bold text-slate-900 transition-colors group-hover:text-brand-700">
                   {title}
                 </span>
-                <span className="text-sm text-slate-600">{text}</span>
+                <span className="text-sm leading-relaxed text-slate-600">{text}</span>
               </Link>
             ))}
           </div>
@@ -280,10 +281,10 @@ export default function LandingPage() {
       </section>
 
       {/* Daily visit */}
-      <section className="border-b border-slate-200 bg-indigo-600">
-        <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
-          <h2 className="text-2xl font-bold text-white">Built to be visited daily</h2>
-          <p className="mt-2 max-w-2xl text-base text-indigo-100">
+      <section className="border-b border-slate-200/80 bg-gradient-to-br from-brand-700 via-brand-800 to-brand-900">
+        <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6">
+          <h2 className="text-3xl font-extrabold tracking-tight text-white">Built to be visited daily</h2>
+          <p className="mt-3 max-w-2xl text-base leading-relaxed text-brand-100">
             Every morning your home screen has something new: today&apos;s plan
             from your 60-day clock, sponsor jobs posted today, one interview
             question to practice, and one tip for your resume — plus a streak
@@ -291,7 +292,7 @@ export default function LandingPage() {
           </p>
           <Link
             href="/register"
-            className="mt-6 inline-flex items-center gap-2 rounded-md bg-white px-5 py-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+            className="mt-8 inline-flex items-center gap-2 rounded-lg bg-white px-6 py-3.5 text-sm font-semibold text-brand-700 shadow-md transition-all hover:bg-brand-50 hover:shadow-lg active:scale-[0.98]"
           >
             Start your 60 days <ArrowRight className="h-4 w-4" aria-hidden />
           </Link>
@@ -300,32 +301,32 @@ export default function LandingPage() {
 
       {/* Pricing */}
       <section id="pricing" className="bg-white">
-        <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6">
-          <h2 className="text-2xl font-bold text-slate-900">Pricing</h2>
-          <p className="mt-1 text-sm text-slate-500">
+        <div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6">
+          <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">Pricing</h2>
+          <p className="mt-2 text-base text-slate-600">
             One-time payments. No subscription, no monthly charge.
           </p>
-          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+          <div className="mt-10 grid gap-5 sm:grid-cols-3">
             {PLANS.map((plan) => (
-              <div key={plan.name} className="flex flex-col gap-2 rounded-xl border border-slate-200 p-5">
-                <p className="text-base font-semibold text-slate-900">{plan.name}</p>
-                <p className="text-3xl font-bold text-slate-900">
+              <div key={plan.name} className="flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-card transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-lift">
+                <p className="text-base font-bold text-slate-900">{plan.name}</p>
+                <p className="text-4xl font-extrabold tracking-tight text-slate-900">
                   {plan.price}{" "}
                   <span className="text-sm font-medium text-slate-500">{plan.per}</span>
                 </p>
-                <p className="text-sm text-slate-600">{plan.text}</p>
+                <p className="text-sm leading-relaxed text-slate-600">{plan.text}</p>
                 <Link
                   href="/plans"
-                  className="mt-2 inline-flex w-fit items-center gap-1 text-sm font-semibold text-indigo-600 hover:underline"
+                  className="mt-2 inline-flex w-fit items-center gap-1 text-sm font-semibold text-brand-600 hover:underline"
                 >
                   See plans <ArrowRight className="h-4 w-4" aria-hidden />
                 </Link>
               </div>
             ))}
           </div>
-          <p className="mt-6 text-sm text-slate-500">
+          <p className="mt-8 text-sm text-slate-500">
             Already have an account?{" "}
-            <Link href="/login" className="font-medium text-indigo-600 hover:underline">
+            <Link href="/login" className="font-semibold text-brand-600 hover:underline">
               Sign in
             </Link>
           </p>

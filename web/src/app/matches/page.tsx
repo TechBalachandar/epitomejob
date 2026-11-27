@@ -56,8 +56,8 @@ function MatchesPageContent() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Matches</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Matches</h1>
+        <p className="mt-1 text-base text-slate-600">
           Applying never sends anything directly — it creates a pending
           approval for you to confirm.
         </p>
@@ -95,7 +95,7 @@ function MatchesPageContent() {
           return (
             <Card
               key={job.id}
-              className={`cursor-pointer transition-shadow hover:shadow-md ${isExpanded ? "ring-2 ring-indigo-600" : ""}`}
+              className={`cursor-pointer transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-lift ${isExpanded ? "border-brand-300 ring-2 ring-brand-600" : ""}`}
               onClick={() => setExpandedId(isExpanded ? null : job.id)}
               aria-expanded={isExpanded}
             >
@@ -107,9 +107,9 @@ function MatchesPageContent() {
                       {job.company} · {job.location} · {job.workType}
                     </CardDescription>
                   </div>
-                  <span className="flex shrink-0 flex-col items-center rounded-lg bg-indigo-50 px-3 py-2">
-                    <span className="text-xl font-bold text-indigo-700">{match.score}%</span>
-                    <span className="text-[11px] font-medium text-indigo-600">match</span>
+                  <span className="flex shrink-0 flex-col items-center rounded-xl bg-brand-50 px-3.5 py-2 shadow-sm ring-1 ring-brand-100">
+                    <span className="text-xl font-extrabold tabular-nums text-brand-700">{match.score}%</span>
+                    <span className="text-[11px] font-semibold text-brand-600">match</span>
                   </span>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -151,7 +151,7 @@ function MatchesPageContent() {
                     className="flex flex-col gap-3 border-t border-slate-200 pt-4"
                     data-testid={`job-detail-${job.id}`}
                   >
-                    <p className="text-sm font-medium text-slate-900">
+                    <p className="text-sm font-semibold text-emerald-700">
                       {salary ? `${salary} ${job.currency}` : "Salary not listed"}
                     </p>
                     <p className="text-sm text-slate-600">{job.summary}</p>
