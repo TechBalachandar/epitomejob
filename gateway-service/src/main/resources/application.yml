@@ -459,6 +459,10 @@ gateway:
 # cancelled every Coach call and the fallback 503 made Coach unusable.
 # The "coach" instance gets a 120s timeout, matching the agent-brain's
 # Ollama timeout (120s) and the backend's agent-brain read timeout (120s).
+# Same for "resume-builder": its Co-Pilot endpoint also calls Ollama via
+# agent-brain (e.g. 3-5 cover-letter options), so the 3s limiter
+# cancelled every generation and the fallback 503 made Cover Letter
+# generation unusable. It gets 120s too.
 resilience4j:
   circuitbreaker:
     instances:
@@ -503,7 +507,7 @@ resilience4j:
         timeoutDuration: 3s
         cancelRunningFuture: true
       resume-builder:
-        timeoutDuration: 3s
+        timeoutDuration: 120s
         cancelRunningFuture: true
       coach:
         timeoutDuration: 120s

@@ -18,7 +18,13 @@ class RestClientConfig {
   @Bean
   fun agentBrainRestClient(
       @Value("\${app.agent-brain.url}") agentBrainUrl: String): RestClient {
-    return restClient(agentBrainUrl, Duration.ofSeconds(30))
+    // 120s, matching the agent-brain Ollama timeout (120s) and the
+    // backend's agent-brain read timeout (120s). A Co-Pilot generation
+    // (e.g. 3-5 cover-letter options) calls local Ollama and takes far
+    // longer than 30s on CPU — the old 30s read timeout fired first,
+    // returned 502, and the gateway fallback 503 made Cover Letter
+    // generation unusable.
+    return restClient(agentBrainUrl, Duration.ofSeconds(120))
   }
 
   @Bean

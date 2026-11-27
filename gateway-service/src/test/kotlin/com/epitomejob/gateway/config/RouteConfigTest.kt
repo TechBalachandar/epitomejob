@@ -275,6 +275,15 @@ class RouteConfigTest {
         "resilience4j.timelimiter.instances.coach.timeoutDuration"
       )
     )
+    // Resume-builder Co-Pilot also calls Ollama via agent-brain (e.g.
+    // 3-5 cover-letter options), so it gets 120s too — a 3s limit
+    // cancelled every generation and the fallback 503 made Cover Letter
+    // generation unusable.
+    assertEquals(
+      "120s", environment.getProperty(
+        "resilience4j.timelimiter.instances.resume-builder.timeoutDuration"
+      )
+    )
     // Semaphore bulkhead on the fast routes (fail fast, no queueing).
     assertEquals(
       "0", environment.getProperty(
