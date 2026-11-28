@@ -260,6 +260,11 @@ services:
       TEMPORAL_ENABLED: "true"
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       OLLAMA_CHAT_MODEL: llama3.1:8b
+      # Co-Pilot (cover letters) runs on the small, fast 1.5B model: the
+      # 8B chat model writes ~5 tok/s on a CPU-only Mac, so 3-5 full
+      # letters take 5-9 min and always blow the 120s timeout. The 1.5B
+      # model writes ~14 tok/s; 2 letters fit in ~80s. Coach keeps 8B.
+      OLLAMA_COPILOT_MODEL: qwen2.5-coder:1.5b
       OLLAMA_EMBED_MODEL: nomic-embed-text
       AGENT_BRAIN_PORT: "8000"
       MCP_PORT: "8001"

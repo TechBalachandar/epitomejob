@@ -50,6 +50,27 @@ def get_llm() -> OllamaClient:
     return _llm
 
 
+_copilot_llm: OllamaClient | None = None
+
+
+def get_copilot_llm() -> OllamaClient:
+    """Ollama client for the Resume Builder Co-Pilot.
+
+    Uses the small, fast `ollama_copilot_model` (default: the chat model)
+    instead of the 8B chat model, because a multi-option cover-letter
+    generation is far too slow on the 8B model on a CPU-only Mac.
+    """
+    global _copilot_llm
+    if _copilot_llm is None:
+        _copilot_llm = OllamaClient(
+            base_url=settings.ollama_base_url,
+            chat_model=settings.ollama_copilot_model,
+            embed_model=settings.ollama_embed_model,
+            timeout_s=settings.ollama_timeout_s,
+        )
+    return _copilot_llm
+
+
 def get_store() -> RagStore:
     global _store
     if _store is None:
@@ -270,7 +291,7 @@ async def resume_builder_copilot(
     _ = (token, user_id)
     try:
         result = await run_copilot(
-            req.active_section, req.user_context, req.target_jd, req.resume_state, get_llm()
+            req.active_section, req.user_context, req.target_jd, req.resume_state, get_copilot_llm()
         )
         return CopilotResponse(**result)  # type: ignore[arg-type]
     except HTTPException:

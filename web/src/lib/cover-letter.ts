@@ -61,11 +61,17 @@ export interface CoverLetterStorage {
 
 /**
  * The user_context sent to Co-Pilot. It asks for a complete cover
- * letter — greeting, 2–3 body paragraphs, closing — as 3–5 distinct
+ * letter — greeting, 2–3 body paragraphs, closing — as 2 distinct
  * options, each option's content lines being the letter's paragraphs
  * in order. Zero-hallucination rules are stated the same way the
  * resume Co-Pilot states them: only facts from the resume, [X%] /
  * [$Y] / [N+ users] placeholders where a number is missing.
+ *
+ * NOTE: 2 options, not 3-5. On a CPU-only Mac the local 8B model writes
+ * ~5 tok/s, so 3-5 full letters take 5-9 min and always blow the 120s
+ * timeout; even the fast 1.5B Co-Pilot model needs ~118s for 3 letters.
+ * 2 letters fit in ~80s. Raise this back to 3-5 when the Mac is faster
+ * (Apple Silicon) or the Co-Pilot goes async.
  */
 export function buildCoverLetterPrompt(input: CoverLetterInput): string {
   const lines = [
@@ -78,7 +84,7 @@ export function buildCoverLetterPrompt(input: CoverLetterInput): string {
     input.hiringManager
       ? `Address the letter to ${input.hiringManager}.`
       : "Address the letter to the hiring manager (\"Dear Hiring Manager,\") — do not invent a name.",
-    "Return 3 to 5 distinct full-letter options. Each option's content must be the letter's paragraphs in order: greeting, 2–3 body paragraphs connecting the applicant's experience to the job description, and a closing paragraph with a call to action.",
+    "Return 2 distinct full-letter options. Each option's content must be the letter's paragraphs in order: greeting, 2–3 body paragraphs connecting the applicant's experience to the job description, and a closing paragraph with a call to action.",
     "Do not invent employers, titles, dates, or numbers that are not in resume_state. Where a measurable result would strengthen the letter but no number is in the resume, use an editable placeholder such as [X%], [$Y], or [N+ users].",
     "Keep each letter under 400 words.",
   );

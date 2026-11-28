@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     java_base_url: str = "http://localhost:8080"
     ollama_base_url: str = "http://localhost:11434"
     ollama_chat_model: str = "llama3.1:8b"
+    # Co-Pilot (Resume Builder / cover letters) uses its own model so a
+    # long multi-option generation can run on a small, fast model instead
+    # of the 8B chat model. On a CPU-only Mac the 8B model writes ~5 tok/s,
+    # so 3-5 full letters take 5-9 min and always blow the 120s timeout.
+    # The 1.5B model writes ~14 tok/s, so 2 letters fit in ~80s.
+    # Defaults to the chat model; override via OLLAMA_COPILOT_MODEL.
+    ollama_copilot_model: str = "llama3.1:8b"
     ollama_embed_model: str = "nomic-embed-text"
     ollama_timeout_s: float = 120.0
     database_url: str = "postgresql://epitomejob:epitomejob-dev@localhost:5432/epitomejob"
